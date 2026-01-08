@@ -596,9 +596,18 @@ export class RawSidebar {
     const cwd = process.cwd();
     const parts = cwd.split('/').filter(Boolean);
     const shortPath = parts.length >= 2 ? parts.slice(-2).join('/') : parts[parts.length - 1] || cwd;
+
+    // Get git branch
+    let branch = '';
+    try {
+      branch = require('child_process').execSync('git rev-parse --abbrev-ref HEAD 2>/dev/null', { encoding: 'utf8' }).trim();
+    } catch {}
+
     const folderDisplay = `📁 ${shortPath}`;
-    const folderPadding = ' '.repeat(Math.max(0, this.width - folderDisplay.length - 3));
-    lines.push(`${ansi.bgGray}  ${ansi.black}${folderDisplay}${folderPadding}${ansi.reset}`);
+    const branchDisplay = branch ? ` 🌱 ${branch}` : '';
+    const footerContent = folderDisplay + branchDisplay;
+    const footerPadding = ' '.repeat(Math.max(0, this.width - footerContent.length - 3));
+    lines.push(`${ansi.bgGray}  ${ansi.black}${footerContent}${footerPadding}${ansi.reset}`);
 
     // Output everything at once with synchronized output to prevent partial renders
     let output = '\x1b[?2026h' + ansi.cursorHome + lines.join('\n');
