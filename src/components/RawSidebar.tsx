@@ -307,6 +307,20 @@ export class RawSidebar {
       return;
     }
 
+    // Ctrl+W - delete word before cursor
+    if (str === '\x17') {
+      if (inputCursor > 0) {
+        // Find start of previous word (skip trailing spaces, then skip word chars)
+        let pos = inputCursor;
+        while (pos > 0 && inputBuffer[pos - 1] === ' ') pos--;
+        while (pos > 0 && inputBuffer[pos - 1] !== ' ') pos--;
+        this.state.inputBuffer = inputBuffer.slice(0, pos) + inputBuffer.slice(inputCursor);
+        this.state.inputCursor = pos;
+        this.redrawInputText();
+      }
+      return;
+    }
+
     // Regular character - optimized append when at end
     if (str.length === 1 && str.charCodeAt(0) >= 32 && str.charCodeAt(0) <= 126) {
       const atEnd = inputCursor === inputBuffer.length;
@@ -336,13 +350,21 @@ export class RawSidebar {
       if (this.state.selectedIndex > 0) {
         this.state.selectedIndex--;
         this.render();
+      } else if (this.state.selectedIndex === 0 && this.state.active) {
+        // Move to active task (index -1)
+        this.state.selectedIndex = -1;
+        this.render();
       }
       return;
     }
 
     // Down arrow or j
     if (str === '\x1b[B' || str === '\x1bOB' || str === 'j') {
-      if (this.state.selectedIndex < this.state.tasks.length - 1) {
+      if (this.state.selectedIndex === -1) {
+        // Move from active to first queue item
+        this.state.selectedIndex = 0;
+        this.render();
+      } else if (this.state.selectedIndex < this.state.tasks.length - 1) {
         this.state.selectedIndex++;
         this.render();
       }
@@ -362,7 +384,12 @@ export class RawSidebar {
     // Enter - send task to Claude
     if (str === '\r' || str === '\n') {
       const task = this.state.tasks[this.state.selectedIndex];
-      if (task && !this.state.active) {
+      if (task) {
+        // Clear any existing active task first
+        if (this.state.active) {
+          completeActiveTask();
+          this.state.active = null;
+        }
         const activated = activateTask(task.id);
         if (activated) {
           this.state.active = activated;
@@ -410,14 +437,22 @@ export class RawSidebar {
       return;
     }
 
-    // 'd' - delete task
+    // 'd' - delete task or clear active
     if (str === 'd') {
-      const task = this.state.tasks[this.state.selectedIndex];
-      if (task) {
-        removeTask(task.id);
-        this.state.tasks = getTasks();
-        this.state.selectedIndex = Math.max(0, this.state.selectedIndex - 1);
+      if (this.state.selectedIndex === -1 && this.state.active) {
+        // Clear active task
+        completeActiveTask();
+        this.state.active = null;
+        this.state.selectedIndex = 0;
         this.render();
+      } else {
+        const task = this.state.tasks[this.state.selectedIndex];
+        if (task) {
+          removeTask(task.id);
+          this.state.tasks = getTasks();
+          this.state.selectedIndex = Math.max(0, this.state.selectedIndex - 1);
+          this.render();
+        }
       }
       return;
     }
@@ -427,9 +462,12 @@ export class RawSidebar {
   private getInputRow(): number {
     // Layout:
     // Row 1: padding
-    // Row 2: "Queue" header
-    // Row 3+: queue items
-    let row = 2; // Start after Queue header
+    // Row 2: "Active" header
+    // Row 3: active content
+    // Row 4: margin
+    // Row 5: "Queue" header
+    // Row 6+: queue items
+    let row = 5; // Start after Queue header
     if (this.state.inputMode === "add") {
       row += this.state.tasks.length;
     } else if (this.state.inputMode === "edit") {
@@ -454,8 +492,9 @@ export class RawSidebar {
     const { inputBuffer, tasks, inputMode, editingTaskId } = this.state;
 
     // Calculate row for the input line
-    // Layout: Row 1: padding, Row 2: Queue header, Row 3+: tasks
-    let row = 3; // First task row (1-indexed)
+    // Layout: Row 1: padding, Row 2: Active header, Row 3: active content,
+    //         Row 4: margin, Row 5: Queue header, Row 6+: tasks
+    let row = 6; // First task row (1-indexed)
     if (inputMode === "edit") {
       const idx = tasks.findIndex(t => t.id === editingTaskId);
       row += Math.max(0, idx);
@@ -508,6 +547,20 @@ export class RawSidebar {
     const bgLine = `${ansi.bgGray}${' '.repeat(this.width)}${ansi.reset}`;
 
     // Header padding
+    lines.push(bgLine);
+
+    // Active section
+    lines.push(`${ansi.bgGray}  ${ansi.bold}${ansi.black}Active${ansi.reset}${ansi.bgGray}${' '.repeat(this.width - 8)}${ansi.reset}`);
+    if (active) {
+      const activeContent = active.content.slice(0, this.width - 8);
+      const isActiveSelected = selectedIndex === -1;
+      const prefix = isActiveSelected ? '[•]' : '→';
+      lines.push(`${ansi.bgGray}  ${ansi.black}${prefix} ${activeContent}${ansi.reset}${ansi.bgGray}${ansi.clearToEnd}${ansi.reset}`);
+    } else {
+      lines.push(`${ansi.bgGray}  ${ansi.gray}No active task${ansi.reset}${ansi.bgGray}${' '.repeat(this.width - 16)}${ansi.reset}`);
+    }
+
+    // Margin
     lines.push(bgLine);
 
     // Queue section
