@@ -50,13 +50,11 @@ const ansi = {
   bgWhite: `${CSI}107m`,
 };
 
-type Section = "active" | "queue";
 type InputMode = "none" | "add" | "edit";
 
 interface State {
   tasks: Task[];
   active: ActiveTask | null;
-  activeSection: Section;
   selectedIndex: number;
   inputMode: InputMode;
   editingTaskId: string | null;
@@ -68,7 +66,6 @@ export class RawSidebar {
   private state: State = {
     tasks: [],
     active: null,
-    activeSection: "queue",
     selectedIndex: 0,
     inputMode: "none",
     editingTaskId: null,
@@ -334,17 +331,9 @@ export class RawSidebar {
       process.exit(0);
     }
 
-    // Tab - switch section
-    if (str === '\t') {
-      this.state.activeSection = this.state.activeSection === "active" ? "queue" : "active";
-      this.state.selectedIndex = 0;
-      this.render();
-      return;
-    }
-
     // Up arrow or k
     if (str === '\x1b[A' || str === '\x1bOA' || str === 'k') {
-      if (this.state.activeSection === "queue" && this.state.selectedIndex > 0) {
+      if (this.state.selectedIndex > 0) {
         this.state.selectedIndex--;
         this.render();
       }
@@ -353,7 +342,7 @@ export class RawSidebar {
 
     // Down arrow or j
     if (str === '\x1b[B' || str === '\x1bOB' || str === 'j') {
-      if (this.state.activeSection === "queue" && this.state.selectedIndex < this.state.tasks.length - 1) {
+      if (this.state.selectedIndex < this.state.tasks.length - 1) {
         this.state.selectedIndex++;
         this.render();
       }
@@ -371,7 +360,7 @@ export class RawSidebar {
     }
 
     // Enter - send task to Claude
-    if ((str === '\r' || str === '\n') && this.state.activeSection === "queue") {
+    if (str === '\r' || str === '\n') {
       const task = this.state.tasks[this.state.selectedIndex];
       if (task && !this.state.active) {
         const activated = activateTask(task.id);
@@ -386,7 +375,7 @@ export class RawSidebar {
     }
 
     // 'a' - add task
-    if (str === 'a' && this.state.activeSection === "queue") {
+    if (str === 'a') {
       // Pause all intervals during input to prevent any background activity
       if (this.pollInterval) clearInterval(this.pollInterval);
       if (this.completionInterval) clearInterval(this.completionInterval);
@@ -402,7 +391,7 @@ export class RawSidebar {
     }
 
     // 'e' - edit task
-    if (str === 'e' && this.state.activeSection === "queue") {
+    if (str === 'e') {
       const task = this.state.tasks[this.state.selectedIndex];
       if (task) {
         // Pause all intervals during input to prevent any background activity
@@ -421,19 +410,13 @@ export class RawSidebar {
       return;
     }
 
-    // 'd' - delete
+    // 'd' - delete task
     if (str === 'd') {
-      if (this.state.activeSection === "queue") {
-        const task = this.state.tasks[this.state.selectedIndex];
-        if (task) {
-          removeTask(task.id);
-          this.state.tasks = getTasks();
-          this.state.selectedIndex = Math.max(0, this.state.selectedIndex - 1);
-          this.render();
-        }
-      } else if (this.state.activeSection === "active" && this.state.active) {
-        completeActiveTask();
-        this.state.active = null;
+      const task = this.state.tasks[this.state.selectedIndex];
+      if (task) {
+        removeTask(task.id);
+        this.state.tasks = getTasks();
+        this.state.selectedIndex = Math.max(0, this.state.selectedIndex - 1);
         this.render();
       }
       return;
@@ -444,12 +427,9 @@ export class RawSidebar {
   private getInputRow(): number {
     // Layout:
     // Row 1: padding
-    // Row 2: "Active" header
-    // Row 3: active content or "No active task"
-    // Row 4: margin
-    // Row 5: "Queue" header
-    // Row 6+: queue items
-    let row = 5; // Start after Queue header
+    // Row 2: "Queue" header
+    // Row 3+: queue items
+    let row = 2; // Start after Queue header
     if (this.state.inputMode === "add") {
       row += this.state.tasks.length;
     } else if (this.state.inputMode === "edit") {
@@ -474,7 +454,8 @@ export class RawSidebar {
     const { inputBuffer, tasks, inputMode, editingTaskId } = this.state;
 
     // Calculate row for the input line
-    let row = 6; // First task row (1-indexed)
+    // Layout: Row 1: padding, Row 2: Queue header, Row 3+: tasks
+    let row = 3; // First task row (1-indexed)
     if (inputMode === "edit") {
       const idx = tasks.findIndex(t => t.id === editingTaskId);
       row += Math.max(0, idx);
@@ -521,23 +502,12 @@ export class RawSidebar {
     if (!this.running) return;
 
     const lines: string[] = [];
-    const { tasks, active, activeSection, selectedIndex, inputMode, editingTaskId, inputBuffer, inputCursor } = this.state;
+    const { tasks, active, selectedIndex, inputMode, editingTaskId, inputBuffer, inputCursor } = this.state;
 
     // Fill with background color
     const bgLine = `${ansi.bgGray}${' '.repeat(this.width)}${ansi.reset}`;
 
     // Header padding
-    lines.push(bgLine);
-
-    // Active section
-    lines.push(`${ansi.bgGray}  ${ansi.bold}${ansi.black}Active${ansi.reset}${ansi.bgGray}${' '.repeat(this.width - 8)}${ansi.reset}`);
-    if (active) {
-      lines.push(`${ansi.bgGray}  ${ansi.black}→ ${active.content.slice(0, this.width - 6)}${ansi.reset}${ansi.bgGray}${ansi.clearToEnd}${ansi.reset}`);
-    } else {
-      lines.push(`${ansi.bgGray}  ${ansi.gray}No active task${ansi.reset}${ansi.bgGray}${' '.repeat(this.width - 16)}${ansi.reset}`);
-    }
-
-    // Margin
     lines.push(bgLine);
 
     // Queue section
@@ -554,7 +524,7 @@ export class RawSidebar {
 
     // Queue items
     tasks.forEach((task, index) => {
-      const isSelected = activeSection === "queue" && index === selectedIndex;
+      const isSelected = index === selectedIndex;
       const isEditing = inputMode === "edit" && editingTaskId === task.id;
 
       if (isEditing) {
@@ -587,10 +557,8 @@ export class RawSidebar {
 
     // Footer
     const helpText = inputMode !== "none"
-      ? "Enter: submit | Esc: cancel"
-      : active
-      ? "Tab: section | d: clear active"
-      : "Tab: section | a: add | e: edit | d: del | Enter: send";
+      ? "↵: submit | Esc: cancel"
+      : "a: add | e: edit | d: del | ↵: send";
     lines.push(`${ansi.bgGray}  ${ansi.gray}${helpText}${ansi.reset}${ansi.bgGray}${ansi.clearToEnd}${ansi.reset}`);
     lines.push(bgLine);
     const cwd = process.cwd();
