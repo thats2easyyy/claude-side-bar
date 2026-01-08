@@ -1,59 +1,42 @@
-# Claude Sidebar - Development Notes
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-Claude Sidebar is a Claude Code plugin that provides a visual sidebar panel for managing todos, context, and tasks.
-
-## Project Structure
-
-```
-claude-sidebar/
-├── .claude-plugin/plugin.json  # Plugin manifest
-├── commands/sidebar.md         # /sidebar slash command
-├── skills/sidebar-awareness/   # Teaches Claude about sidebar
-├── hooks/hooks.json            # TodoWrite sync hook
-├── src/
-│   ├── cli.ts                  # CLI entry point
-│   ├── sync-todos.ts           # Hook script for TodoWrite
-│   ├── components/             # Ink React components
-│   ├── ipc/                    # Unix socket communication
-│   ├── persistence/            # JSON file storage
-│   └── terminal/               # tmux integration
-```
+Claude Sidebar is a Claude Code plugin that provides a visual sidebar panel for managing a task queue. It runs in a tmux split pane alongside Claude Code.
 
 ## Commands
 
 ```bash
-bun run src/cli.ts show     # Render in current terminal
-bun run src/cli.ts spawn    # Launch in tmux split
-bun run src/cli.ts update   # Send IPC message
-bun run src/cli.ts env      # Show environment info
+bun run src/cli.ts show     # Render sidebar in current terminal
+bun run src/cli.ts spawn    # Launch in tmux split pane (must be in tmux)
+bun run src/cli.ts env      # Show environment info (tmux status, socket path)
 ```
 
-## Key Files
+## Architecture
 
-- `src/components/Sidebar.tsx` - Main UI component
-- `src/persistence/store.ts` - Data layer
-- `src/terminal/tmux.ts` - tmux pane management
-- `src/ipc/server.ts` - IPC for real-time updates
+**Terminal Rendering**: Uses raw ANSI escape codes (`src/components/RawSidebar.tsx`) instead of Ink/React to avoid flicker. Key techniques:
+- Synchronized output mode (DEC 2026: `\x1b[?2026h` / `\x1b[?2026l`) wraps all screen updates
+- 256-color mode (`48;5;N`) for background colors
+- `stty -echo raw` for input handling
+- Polling intervals are paused during input mode to prevent background redraws
 
-## Testing
+**Data Flow**:
+- `src/persistence/store.ts` - JSON files in `~/.claude-sidebar/` (tasks.json, active.json, history.log)
+- `src/terminal/tmux.ts` - Pane management, sends tasks to Claude Code pane via `tmux send-keys`
+- `src/ipc/` - Unix socket server/client for external updates (not heavily used currently)
 
-```bash
-# Test CLI works
-bun run src/cli.ts env
-
-# Test in actual terminal (not background)
-bun run src/cli.ts show
-
-# Test tmux spawn (must be in tmux)
-tmux
-bun run src/cli.ts spawn
-```
+**Task Lifecycle**:
+1. User adds task to queue (`addTask`)
+2. User selects task with Enter (`activateTask` - moves to active, removes from queue)
+3. Task is sent to Claude Code pane
+4. Sidebar polls Claude's pane output (`isClaudeAtPrompt`) to detect completion
+5. Task moves to history log (`completeActiveTask`)
 
 ## Runtime
 
-Uses Bun instead of Node.js:
+Uses Bun, not Node.js:
 - `bun run` instead of `npm run`
 - `bun install` for dependencies
-- `Bun.$` for shell commands
+- `Bun.$` for shell commands in tmux.ts
