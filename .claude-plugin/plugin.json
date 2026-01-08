@@ -1,0 +1,12 @@
+{
+  "name": "claude-sidebar",
+  "description": "Visual sidebar for managing todos, tasks, and context alongside Claude Code",
+  "version": "0.1.0",
+  "author": {
+    "name": "Tyler"
+  },
+  "keywords": ["sidebar", "todos", "tasks", "productivity", "tmux"],
+  "commands": "./commands/",
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json"
+}
