@@ -56,6 +56,18 @@ const ansi = {
 
 type InputMode = "none" | "add" | "edit";
 
+// Wrap text into multiple lines
+function wrapText(text: string, maxWidth: number): string[] {
+  if (text.length <= maxWidth) return [text];
+  const lines: string[] = [];
+  let remaining = text;
+  while (remaining.length > 0) {
+    lines.push(remaining.slice(0, maxWidth));
+    remaining = remaining.slice(maxWidth);
+  }
+  return lines;
+}
+
 interface State {
   tasks: Task[];
   active: ActiveTask | null;
@@ -227,6 +239,7 @@ export class RawSidebar {
     this.state.inputCursor = 0;
     this.state.inputMode = "none";
     this.state.editingTaskId = null;
+    this.prevInputLineCount = 0;
     this.render();
     this.restartPolling();
   }
@@ -282,27 +295,22 @@ export class RawSidebar {
       return;
     }
 
-    // Backspace - optimized single-char delete when at end
+    // Backspace
     if (str === '\x7f' || str === '\b') {
       if (inputCursor > 0) {
-        const atEnd = inputCursor === inputBuffer.length;
         this.state.inputBuffer = inputBuffer.slice(0, inputCursor - 1) + inputBuffer.slice(inputCursor);
         this.state.inputCursor = inputCursor - 1;
-        if (atEnd) {
-          // Simple case: just erase the last character
-          this.handleBackspace();
-        } else {
-          // Need to redraw from cursor position
-          this.redrawInputText();
-        }
+        // Always redraw for multi-line support
+        this.redrawInputText();
       }
       return;
     }
 
-    // Arrow keys - just update internal cursor position (no visual update to prevent flicker)
+    // Arrow keys
     if (str === '\x1b[D' || str === '\x1bOD') { // Left
       if (inputCursor > 0) {
         this.state.inputCursor = inputCursor - 1;
+        this.moveCursor();
       }
       return;
     }
@@ -310,19 +318,76 @@ export class RawSidebar {
     if (str === '\x1b[C' || str === '\x1bOC') { // Right
       if (inputCursor < inputBuffer.length) {
         this.state.inputCursor = inputCursor + 1;
+        this.moveCursor();
       }
       return;
     }
 
-    // Ctrl+A - start of line
-    if (str === '\x01') {
-      this.state.inputCursor = 0;
+    // Up arrow - move up one visual line
+    if (str === '\x1b[A' || str === '\x1bOA') {
+      const maxWidth = this.width - 8;
+      if (inputCursor >= maxWidth) {
+        this.state.inputCursor = inputCursor - maxWidth;
+        this.moveCursor();
+      }
       return;
     }
 
-    // Ctrl+E - end of line
+    // Down arrow - move down one visual line
+    if (str === '\x1b[B' || str === '\x1bOB') {
+      const maxWidth = this.width - 8;
+      const newPos = inputCursor + maxWidth;
+      if (newPos <= inputBuffer.length) {
+        this.state.inputCursor = newPos;
+        this.moveCursor();
+      } else if (inputCursor < inputBuffer.length) {
+        // If can't go down a full line, go to end
+        this.state.inputCursor = inputBuffer.length;
+        this.moveCursor();
+      }
+      return;
+    }
+
+    // Option+Left - move to start of previous word (iTerm2: \x1b[1;3D or \x1bb)
+    if (str === '\x1b[1;3D' || str === '\x1bb') {
+      let pos = inputCursor;
+      // Skip any spaces before cursor
+      while (pos > 0 && inputBuffer[pos - 1] === ' ') pos--;
+      // Skip word characters
+      while (pos > 0 && inputBuffer[pos - 1] !== ' ') pos--;
+      this.state.inputCursor = pos;
+      this.moveCursor();
+      return;
+    }
+
+    // Option+Right - move to end of next word (iTerm2: \x1b[1;3C or \x1bf)
+    if (str === '\x1b[1;3C' || str === '\x1bf') {
+      let pos = inputCursor;
+      // Skip word characters
+      while (pos < inputBuffer.length && inputBuffer[pos] !== ' ') pos++;
+      // Skip any spaces after word
+      while (pos < inputBuffer.length && inputBuffer[pos] === ' ') pos++;
+      this.state.inputCursor = pos;
+      this.moveCursor();
+      return;
+    }
+
+    // Ctrl+A - start of current visual line
+    if (str === '\x01') {
+      const maxWidth = this.width - 8;
+      const visualLine = Math.floor(inputCursor / maxWidth);
+      this.state.inputCursor = visualLine * maxWidth;
+      this.moveCursor();
+      return;
+    }
+
+    // Ctrl+E - end of current visual line
     if (str === '\x05') {
-      this.state.inputCursor = inputBuffer.length;
+      const maxWidth = this.width - 8;
+      const visualLine = Math.floor(inputCursor / maxWidth);
+      const lineEnd = Math.min((visualLine + 1) * maxWidth, inputBuffer.length);
+      this.state.inputCursor = lineEnd;
+      this.moveCursor();
       return;
     }
 
@@ -355,18 +420,12 @@ export class RawSidebar {
       return;
     }
 
-    // Regular character - optimized append when at end
+    // Regular character
     if (str.length === 1 && str.charCodeAt(0) >= 32 && str.charCodeAt(0) <= 126) {
-      const atEnd = inputCursor === inputBuffer.length;
       this.state.inputBuffer = inputBuffer.slice(0, inputCursor) + str + inputBuffer.slice(inputCursor);
       this.state.inputCursor = inputCursor + 1;
-      if (atEnd) {
-        // Simple case: just append the character (cursor advances automatically)
-        this.writeChar(str);
-      } else {
-        // Need to redraw from cursor position
-        this.redrawInputText();
-      }
+      // Always redraw for multi-line support
+      this.redrawInputText();
       return;
     }
   }
@@ -442,6 +501,7 @@ export class RawSidebar {
       this.state.inputMode = "add";
       this.state.inputBuffer = "";
       this.state.inputCursor = 0;
+      this.prevInputLineCount = 1; // Start with 1 empty line
       this.render();
       this.setupInputCursor();
       return;
@@ -456,6 +516,8 @@ export class RawSidebar {
         this.state.editingTaskId = task.id;
         this.state.inputBuffer = task.content;
         this.state.inputCursor = task.content.length;
+        const maxWidth = this.width - 8;
+        this.prevInputLineCount = Math.max(1, Math.ceil(task.content.length / maxWidth));
         this.render();
         this.setupInputCursor();
       }
@@ -484,50 +546,62 @@ export class RawSidebar {
   }
 
   private inputRow = 0;
+  private prevInputLineCount = 0;
 
   private setupInputCursor(): void {
-    const { inputBuffer, tasks, inputMode, editingTaskId } = this.state;
-
-    // Calculate row for the input line
-    // Layout: Row 1: padding, Row 2: Active header, Row 3: active content,
-    //         Row 4: margin, Row 5: Queue header, Row 6+: tasks
-    let row = 6; // First task row (1-indexed)
-    if (inputMode === "edit") {
-      const idx = tasks.findIndex(t => t.id === editingTaskId);
-      row += Math.max(0, idx);
-    } else if (inputMode === "add") {
-      row += tasks.length;
-    }
-    this.inputRow = row;
-
-    // Position cursor at end of current text
-    const cursorCol = 7 + inputBuffer.length;
-    process.stdout.write(ansi.cursorTo(row, cursorCol) + ansi.showCursor);
+    process.stdout.write(this.getCursorPosition() + ansi.showCursor);
   }
 
-  private writeChar(char: string): void {
-    process.stdout.write(ansi.beginSync + char + ansi.endSync);
+  private moveCursor(): void {
+    process.stdout.write(ansi.beginSync + this.getCursorPosition() + ansi.endSync);
   }
 
-  private handleBackspace(): void {
-    process.stdout.write(ansi.beginSync + '\b \b' + ansi.endSync);
+  private getCursorPosition(): string {
+    const { inputCursor } = this.state;
+    const maxWidth = this.width - 8;
+
+    // Calculate which visual line the cursor is on and column within that line
+    const visualLine = Math.floor(inputCursor / maxWidth);
+    const col = inputCursor % maxWidth;
+
+    // Position cursor (this.inputRow is set during render)
+    const cursorRow = this.inputRow + visualLine;
+    const cursorCol = 7 + col;
+    return ansi.cursorTo(cursorRow, cursorCol);
   }
 
   private redrawInputText(): void {
     const { inputBuffer, inputCursor } = this.state;
     const maxWidth = this.width - 8; // Account for "  [ ] " prefix
-    const displayText = inputBuffer.slice(0, maxWidth);
-    const padding = ' '.repeat(Math.max(0, maxWidth - displayText.length));
-    const cursorCol = 7 + Math.min(inputCursor, maxWidth);
 
-    // Redraw full line: move to start, write prefix + text + padding with background
-    process.stdout.write(
-      ansi.beginSync +
-      ansi.cursorTo(this.inputRow, 1) +
-      `${ansi.bgGray}  [ ] ${ansi.black}${displayText}${padding}  ${ansi.reset}` +
-      ansi.cursorTo(this.inputRow, cursorCol) +
-      ansi.endSync
-    );
+    // Wrap text into multiple lines
+    const wrappedLines = wrapText(inputBuffer, maxWidth);
+    if (wrappedLines.length === 0) wrappedLines.push('');
+
+    // Calculate cursor position
+    const visualLine = Math.floor(inputCursor / maxWidth);
+    const col = inputCursor % maxWidth;
+    const cursorRow = this.inputRow + visualLine;
+    const cursorCol = 7 + col;
+
+    // Redraw all wrapped lines
+    let output = ansi.beginSync;
+    wrappedLines.forEach((line, i) => {
+      const prefix = i === 0 ? '[ ]' : '   ';
+      const padding = ' '.repeat(Math.max(0, maxWidth - line.length));
+      output += ansi.cursorTo(this.inputRow + i, 1) +
+        `${ansi.bgGray}  ${prefix} ${ansi.black}${line}${padding}  ${ansi.reset}`;
+    });
+
+    // Clear any leftover lines from previous longer text
+    for (let i = wrappedLines.length; i < this.prevInputLineCount; i++) {
+      output += ansi.cursorTo(this.inputRow + i, 1) +
+        `${ansi.bgGray}${' '.repeat(this.width)}${ansi.reset}`;
+    }
+    this.prevInputLineCount = wrappedLines.length;
+
+    output += ansi.cursorTo(cursorRow, cursorCol) + ansi.endSync;
+    process.stdout.write(output);
   }
 
   private render(): void {
@@ -551,10 +625,21 @@ export class RawSidebar {
     // Active section
     lines.push(`${bg}  ${bold}${text}Active${ansi.reset}${bg}${' '.repeat(this.width - 8)}${ansi.reset}`);
     if (active) {
-      const activeContent = active.content.slice(0, this.width - 8);
       const isActiveSelected = selectedIndex === -1;
-      const prefix = isActiveSelected ? '[•]' : '→';
-      lines.push(`${bg}  ${text}${prefix} ${activeContent}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      const maxContentWidth = this.width - 8;
+
+      if (isActiveSelected && active.content.length > maxContentWidth) {
+        // Wrap text when selected
+        const wrappedLines = wrapText(active.content, maxContentWidth);
+        wrappedLines.forEach((line, i) => {
+          const prefix = i === 0 ? '[•]' : '   ';
+          lines.push(`${bg}  ${text}${prefix} ${line}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+        });
+      } else {
+        const activeContent = active.content.slice(0, maxContentWidth);
+        const prefix = isActiveSelected ? '[•]' : '→';
+        lines.push(`${bg}  ${text}${prefix} ${activeContent}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      }
     } else {
       lines.push(`${bg}  ${muted}No active task${ansi.reset}${bg}${' '.repeat(this.width - 16)}${ansi.reset}`);
     }
@@ -581,12 +666,24 @@ export class RawSidebar {
 
       if (isEditing) {
         inputLineRow = lines.length + 1; // 1-indexed row number
-        const displayText = inputBuffer.slice(0, maxContentWidth);
-        const padding = ' '.repeat(Math.max(0, maxContentWidth - displayText.length));
-        lines.push(`${bg}  [ ] ${text}${displayText}${padding}${ansi.reset}`);
+        this.inputRow = inputLineRow; // Store for cursor positioning
+        const wrappedLines = wrapText(inputBuffer, maxContentWidth);
+        if (wrappedLines.length === 0) wrappedLines.push('');
+        wrappedLines.forEach((line, i) => {
+          const prefix = i === 0 ? '[ ]' : '   ';
+          const padding = ' '.repeat(Math.max(0, maxContentWidth - line.length));
+          lines.push(`${bg}  ${prefix} ${text}${line}${padding}${ansi.reset}`);
+        });
+      } else if (isSelected && task.content.length > maxContentWidth) {
+        // Wrap text when selected
+        const wrappedLines = wrapText(task.content, maxContentWidth);
+        wrappedLines.forEach((line, i) => {
+          const checkbox = i === 0 ? '[•]' : '   ';
+          lines.push(`${bg}  ${text}${checkbox} ${line}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+        });
       } else {
         const checkbox = isSelected ? '[•]' : '[ ]';
-        const content = task.content.slice(0, this.width - 8);
+        const content = task.content.slice(0, maxContentWidth);
         lines.push(`${bg}  ${text}${checkbox} ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       }
     });
@@ -594,9 +691,14 @@ export class RawSidebar {
     // Add new task input
     if (inputMode === "add") {
       inputLineRow = lines.length + 1; // 1-indexed row number
-      const displayText = inputBuffer.slice(0, maxContentWidth);
-      const padding = ' '.repeat(Math.max(0, maxContentWidth - displayText.length));
-      lines.push(`${bg}  [ ] ${text}${displayText}${padding}${ansi.reset}`);
+      this.inputRow = inputLineRow; // Store for cursor positioning
+      const wrappedLines = wrapText(inputBuffer, maxContentWidth);
+      if (wrappedLines.length === 0) wrappedLines.push('');
+      wrappedLines.forEach((line, i) => {
+        const prefix = i === 0 ? '[ ]' : '   ';
+        const padding = ' '.repeat(Math.max(0, maxContentWidth - line.length));
+        lines.push(`${bg}  ${prefix} ${text}${line}${padding}${ansi.reset}`);
+      });
     }
 
     // Fill remaining space
@@ -634,8 +736,12 @@ export class RawSidebar {
 
     // Position cursor and show it if in input mode, otherwise hide it
     if (inputMode !== "none" && inputLineRow > 0) {
-      const cursorCol = 7 + Math.min(inputCursor, maxContentWidth);
-      output += ansi.cursorTo(inputLineRow, cursorCol) + ansi.showCursor;
+      // Calculate which visual line the cursor is on
+      const visualLine = Math.floor(inputCursor / maxContentWidth);
+      const col = inputCursor % maxContentWidth;
+      const cursorRow = inputLineRow + visualLine;
+      const cursorCol = 7 + col;
+      output += ansi.cursorTo(cursorRow, cursorCol) + ansi.showCursor;
     } else {
       output += ansi.hideCursor;
     }
