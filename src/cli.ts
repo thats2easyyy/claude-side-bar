@@ -11,6 +11,7 @@
 
 import { program } from "commander";
 import { isInTmux, getEnvInfo, spawnSidebarPane } from "./terminal/tmux";
+import { isInITerm, spawnITermSidebarPane, getITermEnvInfo } from "./terminal/iterm";
 import { createIPCServer } from "./ipc/server";
 import { sendMessage } from "./ipc/client";
 import { getSocketPath, ensureDir } from "./persistence/store";
@@ -52,28 +53,55 @@ program
 
     sidebar.start();
 
+    // Handle Ctrl+C and termination signals for clean exit
+    const cleanup = () => {
+      sidebar.stop();
+      server.close();
+      process.exit(0);
+    };
+    process.on('SIGINT', cleanup);
+    process.on('SIGTERM', cleanup);
+
     // Keep process running
     await new Promise(() => {});
   });
 
-// Spawn command - launch sidebar in tmux split pane
+// Spawn command - launch sidebar in split pane (iTerm2 or tmux)
 program
   .command("spawn")
-  .description("Launch sidebar in tmux split pane")
-  .action(async () => {
-    if (!isInTmux()) {
-      console.error("Error: Not running in tmux.");
-      console.error("Start a tmux session first: tmux");
-      process.exit(1);
-    }
-
+  .description("Launch sidebar in split pane (iTerm2 preferred, tmux fallback)")
+  .option("--tmux", "Force tmux mode even in iTerm2")
+  .action(async (options) => {
     // Get the path to this script
     const scriptPath = process.argv[1];
     const command = `bun ${scriptPath} show`;
 
+    // Prefer iTerm2 if available (avoids scrollback corruption)
+    if (isInITerm() && !options.tmux) {
+      console.log("Using iTerm2 split (preserves scrollback)...");
+      const sessionId = await spawnITermSidebarPane(command);
+      if (sessionId) {
+        console.log(`Sidebar spawned in iTerm2 session: ${sessionId}`);
+      } else {
+        console.error("Failed to spawn iTerm2 sidebar");
+        process.exit(1);
+      }
+      return;
+    }
+
+    // Fall back to tmux
+    if (!isInTmux()) {
+      console.error("Error: Not running in tmux or iTerm2.");
+      console.error("Options:");
+      console.error("  - Run inside iTerm2 (recommended)");
+      console.error("  - Start a tmux session: tmux");
+      process.exit(1);
+    }
+
+    console.log("Using tmux split (may affect scrollback)...");
     const paneId = await spawnSidebarPane(command);
     if (paneId) {
-      console.log(`Sidebar spawned in pane: ${paneId}`);
+      console.log(`Sidebar spawned in tmux pane: ${paneId}`);
     }
   });
 
@@ -114,13 +142,18 @@ program
   .command("env")
   .description("Show environment info")
   .action(() => {
-    const info = getEnvInfo();
+    const tmuxInfo = getEnvInfo();
+    const itermInfo = getITermEnvInfo();
     console.log("Environment:");
-    console.log(`  In tmux: ${info.inTmux ? "Yes" : "No"}`);
-    console.log(`  TERM: ${info.term}`);
-    console.log(`  SHELL: ${info.shell}`);
+    console.log(`  In iTerm2: ${itermInfo.inITerm ? "Yes" : "No"}`);
+    console.log(`  In tmux: ${tmuxInfo.inTmux ? "Yes" : "No"}`);
+    console.log(`  TERM_PROGRAM: ${itermInfo.termProgram}`);
+    console.log(`  TERM: ${tmuxInfo.term}`);
+    console.log(`  SHELL: ${tmuxInfo.shell}`);
     console.log(`  Socket: ${getSocketPath()}`);
-    console.log(`  Stored pane: ${info.storedPaneId || "none"}`);
+    if (tmuxInfo.inTmux) {
+      console.log(`  Stored tmux pane: ${tmuxInfo.storedPaneId || "none"}`);
+    }
   });
 
 // Default to show if no command given

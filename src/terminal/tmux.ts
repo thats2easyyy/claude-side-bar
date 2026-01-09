@@ -65,6 +65,16 @@ async function isPaneValid(paneId: string): Promise<boolean> {
  * Create a new tmux pane and run command in it
  */
 async function createNewPane(command: string): Promise<string> {
+  // Save current history-limit so we can restore it after creating the pane
+  // (history-limit is a session option, not per-pane, so we must set it before creating)
+  let originalLimit = "2000";
+  try {
+    originalLimit = (await $`tmux show-options -gv history-limit`.text()).trim();
+  } catch {}
+
+  // Set minimal history-limit (1 = minimum, 0 = unlimited!) before creating sidebar pane
+  await $`tmux set-option -g history-limit 1`.quiet();
+
   // Create horizontal split with fixed 50 character width for sidebar
   // -h = horizontal split (side by side)
   // -l 50 = new pane gets 50 columns (fixed width)
@@ -72,6 +82,9 @@ async function createNewPane(command: string): Promise<string> {
   // -P -F "#{pane_id}" = print the new pane ID
   const result = await $`tmux split-window -h -l 50 -d -P -F "#{pane_id}"`.text();
   const paneId = result.trim();
+
+  // Restore original history-limit for future panes
+  await $`tmux set-option -g history-limit ${originalLimit}`.quiet();
 
   // Store the pane ID for future reuse
   storePaneId(paneId);

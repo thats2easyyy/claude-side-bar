@@ -15,7 +15,23 @@ import {
   type Task,
   type ActiveTask,
 } from "../persistence/store";
-import { sendToClaudePane, isClaudeAtPrompt, focusClaudePane } from "../terminal/tmux";
+import { sendToClaudePane as tmuxSendToClaudePane, isClaudeAtPrompt, focusClaudePane as tmuxFocusClaudePane, isInTmux } from "../terminal/tmux";
+import { sendToClaudePane as itermSendToClaudePane, focusSession, isInITerm } from "../terminal/iterm";
+
+// Unified functions that work with both iTerm2 and tmux
+async function sendToClaudePane(text: string): Promise<boolean> {
+  if (isInITerm() && !isInTmux()) {
+    return itermSendToClaudePane(text);
+  }
+  return tmuxSendToClaudePane(text);
+}
+
+async function focusClaudePane(): Promise<boolean> {
+  if (isInITerm() && !isInTmux()) {
+    return focusSession(1);
+  }
+  return tmuxFocusClaudePane();
+}
 
 // ANSI escape codes
 const ESC = '\x1b';
@@ -112,8 +128,9 @@ export class RawSidebar {
       execSync('stty -echo raw', { stdio: 'ignore' });
     } catch {}
 
-    // Setup terminal - enable focus reporting
+    // Setup terminal - enter alt screen buffer and enable focus reporting
     process.stdout.write(
+      ansi.enterAltScreen + // Enter alternate screen buffer (prevents scrollback pollution)
       '\x1b[?1004h' + // Enable focus reporting
       ansi.hideCursor + ansi.clearScreen + ansi.cursorHome
     );
@@ -147,8 +164,8 @@ export class RawSidebar {
 
   stop(): void {
     this.running = false;
-    // Disable focus reporting, restore cursor and clear screen
-    process.stdout.write('\x1b[?1004l' + ansi.showCursor + ansi.reset + ansi.clearScreen + ansi.cursorHome);
+    // Disable focus reporting, restore cursor, and exit alternate screen buffer
+    process.stdout.write('\x1b[?1004l' + ansi.showCursor + ansi.reset + ansi.exitAltScreen);
     process.stdin.setRawMode(false);
     process.stdin.removeListener('data', this.handleInput);
     process.stdout.removeListener('resize', this.handleResize);
@@ -178,23 +195,27 @@ export class RawSidebar {
 
       // Start/stop completion polling
       if (newActive && !this.completionInterval) {
-        this.completionInterval = setInterval(async () => {
-          // Skip completion checking during input mode
-          if (this.state.inputMode !== "none") return;
+        // Only enable auto-completion polling in tmux mode
+        // In iTerm2 mode, we can't check the other pane's output
+        if (isInTmux()) {
+          this.completionInterval = setInterval(async () => {
+            // Skip completion checking during input mode
+            if (this.state.inputMode !== "none") return;
 
-          const atPrompt = await isClaudeAtPrompt();
-          if (atPrompt) {
-            this.stableCount++;
-            if (this.stableCount >= 2) {
-              completeActiveTask();
-              this.state.active = null;
+            const atPrompt = await isClaudeAtPrompt();
+            if (atPrompt) {
+              this.stableCount++;
+              if (this.stableCount >= 2) {
+                completeActiveTask();
+                this.state.active = null;
+                this.stableCount = 0;
+                this.render();
+              }
+            } else {
               this.stableCount = 0;
-              this.render();
             }
-          } else {
-            this.stableCount = 0;
-          }
-        }, 2000);
+          }, 2000);
+        }
       } else if (!newActive && this.completionInterval) {
         clearInterval(this.completionInterval);
         this.completionInterval = null;
