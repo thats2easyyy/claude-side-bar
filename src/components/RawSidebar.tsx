@@ -15,7 +15,7 @@ import {
   type Task,
   type ActiveTask,
 } from "../persistence/store";
-import { sendToClaudePane, isClaudeAtPrompt } from "../terminal/tmux";
+import { sendToClaudePane, isClaudeAtPrompt, focusClaudePane } from "../terminal/tmux";
 
 // ANSI escape codes
 const ESC = '\x1b';
@@ -430,6 +430,7 @@ export class RawSidebar {
           this.state.tasks = getTasks();
           sendToClaudePane(task.content);
           this.render();
+          focusClaudePane();
         }
       }
       return;
@@ -561,12 +562,12 @@ export class RawSidebar {
     // Margin
     lines.push(bgLine);
 
-    // Queue section
-    const queueHeader = `Queue${tasks.length > 0 ? ` (${tasks.length})` : ''}`;
+    // To-dos section
+    const queueHeader = `To-dos${tasks.length > 0 ? ` (${tasks.length})` : ''}`;
     lines.push(`${bg}  ${bold}${text}${queueHeader}${ansi.reset}${bg}${' '.repeat(this.width - queueHeader.length - 4)}${ansi.reset}`);
 
     if (tasks.length === 0 && inputMode !== "add") {
-      lines.push(`${bg}  ${muted}No tasks queued${ansi.reset}${bg}${' '.repeat(this.width - 17)}${ansi.reset}`);
+      lines.push(`${bg}  ${muted}No to-dos${ansi.reset}${bg}${' '.repeat(this.width - 11)}${ansi.reset}`);
     }
 
     // Track where the input line is for cursor positioning

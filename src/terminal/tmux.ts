@@ -178,6 +178,21 @@ export async function getClaudePaneId(): Promise<string | null> {
 }
 
 /**
+ * Focus the Claude Code pane (switch tmux focus to it)
+ */
+export async function focusClaudePane(): Promise<boolean> {
+  const claudePane = await getClaudePaneId();
+  if (!claudePane) return false;
+
+  try {
+    await $`tmux select-pane -t ${claudePane}`.quiet();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Send a message to the Claude Code pane (the pane that isn't the sidebar)
  */
 export async function sendToClaudePane(message: string): Promise<boolean> {
