@@ -45,12 +45,12 @@ const ansi = {
   black: `${CSI}30m`,
   gray: `${CSI}90m`,
   white: `${CSI}37m`,
-  bgGray: `${CSI}48;5;255m`, // Light gray background
+  bgGray: `${CSI}48;2;255;255;255m`, // #ffffff - focused
   bgBlack: `${CSI}40m`,
   bgWhite: `${CSI}107m`,
   // Dimmed colors for unfocused state
-  dimBg: `${CSI}48;5;255m`, // Same light gray background
-  dimText: `${CSI}38;5;248m`, // Muted gray text (unfocused)
+  dimBg: `${CSI}48;2;245;245;245m`, // #f5f5f5 - unfocused
+  dimText: `${CSI}30m`, // Same black text (unfocused)
 };
 
 type InputMode = "none" | "add" | "edit";
