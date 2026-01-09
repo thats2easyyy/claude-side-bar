@@ -703,7 +703,7 @@ export class RawSidebar {
 
     // Fill remaining space
     const contentHeight = lines.length;
-    const footerHeight = 3;
+    const footerHeight = 4;
     const remainingHeight = this.height - contentHeight - footerHeight;
     for (let i = 0; i < remainingHeight; i++) {
       lines.push(bgLine);
@@ -730,6 +730,7 @@ export class RawSidebar {
     const footerContent = folderDisplay + branchDisplay;
     const footerPadding = ' '.repeat(Math.max(0, this.width - footerContent.length - 3));
     lines.push(`${bg}  ${text}${footerContent}${footerPadding}${ansi.reset}`);
+    lines.push(bgLine); // Bottom padding
 
     // Output everything at once with synchronized output to prevent partial renders
     let output = '\x1b[?2026h' + ansi.cursorHome + lines.join('\n');
