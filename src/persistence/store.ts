@@ -121,10 +121,9 @@ export function appendToHistory(content: string): void {
 export function activateTask(taskId: string): ActiveTask | null {
   const tasks = getTasks();
   const taskIndex = tasks.findIndex((t) => t.id === taskId);
-
-  if (taskIndex === -1) return null;
-
   const task = tasks[taskIndex];
+
+  if (taskIndex === -1 || !task) return null;
 
   // Remove from queue
   tasks.splice(taskIndex, 1);

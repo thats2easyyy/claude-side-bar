@@ -3,6 +3,7 @@
  * Uses direct ANSI escape codes for all rendering
  */
 
+import { execSync } from "child_process";
 import {
   getTasks,
   getActiveTask,
@@ -91,12 +92,12 @@ export class RawSidebar {
     this.onClose = onClose;
   }
 
-  start() {
+  start(): void {
     this.running = true;
 
     // Use stty to ensure echo is off and we're in raw mode
     try {
-      require('child_process').execSync('stty -echo raw', { stdio: 'ignore' });
+      execSync('stty -echo raw', { stdio: 'ignore' });
     } catch {}
 
     // Setup terminal - enable focus reporting
@@ -132,7 +133,7 @@ export class RawSidebar {
     this.render();
   }
 
-  stop() {
+  stop(): void {
     this.running = false;
     // Disable focus reporting, restore cursor and clear screen
     process.stdout.write('\x1b[?1004l' + ansi.showCursor + ansi.reset + ansi.clearScreen + ansi.cursorHome);
@@ -142,7 +143,7 @@ export class RawSidebar {
 
     // Restore terminal settings
     try {
-      require('child_process').execSync('stty echo -raw sane', { stdio: 'ignore' });
+      execSync('stty echo -raw sane', { stdio: 'ignore' });
     } catch {}
 
     if (this.pollInterval) {
@@ -153,7 +154,7 @@ export class RawSidebar {
     }
   }
 
-  private loadData() {
+  private loadData(): void {
     const newTasks = getTasks();
     const newActive = getActiveTask();
     const tasksChanged = JSON.stringify(newTasks) !== JSON.stringify(this.state.tasks);
@@ -201,15 +202,33 @@ export class RawSidebar {
     }
   };
 
-  private restartPolling() {
-    // Restart the polling interval after exiting input mode
-    if (!this.pollInterval) {
-      this.pollInterval = setInterval(() => {
-        if (this.state.inputMode === "none") {
-          this.loadData();
-        }
-      }, 1000);
+  private pausePolling(): void {
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = null;
     }
+    if (this.completionInterval) {
+      clearInterval(this.completionInterval);
+      this.completionInterval = null;
+    }
+  }
+
+  private restartPolling(): void {
+    if (this.pollInterval) return;
+    this.pollInterval = setInterval(() => {
+      if (this.state.inputMode === "none") {
+        this.loadData();
+      }
+    }, 1000);
+  }
+
+  private exitInputMode(): void {
+    this.state.inputBuffer = "";
+    this.state.inputCursor = 0;
+    this.state.inputMode = "none";
+    this.state.editingTaskId = null;
+    this.render();
+    this.restartPolling();
   }
 
   private handleInput = (data: Buffer) => {
@@ -240,7 +259,7 @@ export class RawSidebar {
     }
   };
 
-  private handleInputMode(str: string) {
+  private handleInputMode(str: string): void {
     const { inputBuffer, inputCursor } = this.state;
 
     // Enter - submit
@@ -253,23 +272,13 @@ export class RawSidebar {
         }
         this.state.tasks = getTasks();
       }
-      this.state.inputBuffer = "";
-      this.state.inputCursor = 0;
-      this.state.inputMode = "none";
-      this.state.editingTaskId = null;
-      this.render();
-      this.restartPolling();
+      this.exitInputMode();
       return;
     }
 
     // Escape - cancel
     if (str === '\x1b') {
-      this.state.inputBuffer = "";
-      this.state.inputCursor = 0;
-      this.state.inputMode = "none";
-      this.state.editingTaskId = null;
-      this.render();
-      this.restartPolling();
+      this.exitInputMode();
       return;
     }
 
@@ -362,7 +371,7 @@ export class RawSidebar {
     }
   }
 
-  private handleNormalMode(str: string) {
+  private handleNormalMode(str: string): void {
     // Escape - close
     if (str === '\x1b') {
       this.stop();
@@ -428,12 +437,7 @@ export class RawSidebar {
 
     // 'a' - add task
     if (str === 'a') {
-      // Pause all intervals during input to prevent any background activity
-      if (this.pollInterval) clearInterval(this.pollInterval);
-      if (this.completionInterval) clearInterval(this.completionInterval);
-      this.pollInterval = null;
-      this.completionInterval = null;
-
+      this.pausePolling();
       this.state.inputMode = "add";
       this.state.inputBuffer = "";
       this.state.inputCursor = 0;
@@ -446,12 +450,7 @@ export class RawSidebar {
     if (str === 'e') {
       const task = this.state.tasks[this.state.selectedIndex];
       if (task) {
-        // Pause all intervals during input to prevent any background activity
-        if (this.pollInterval) clearInterval(this.pollInterval);
-        if (this.completionInterval) clearInterval(this.completionInterval);
-        this.pollInterval = null;
-        this.completionInterval = null;
-
+        this.pausePolling();
         this.state.inputMode = "edit";
         this.state.editingTaskId = task.id;
         this.state.inputBuffer = task.content;
@@ -483,37 +482,9 @@ export class RawSidebar {
     }
   }
 
-  // Calculate the row where the input line is displayed
-  private getInputRow(): number {
-    // Layout:
-    // Row 1: padding
-    // Row 2: "Active" header
-    // Row 3: active content
-    // Row 4: margin
-    // Row 5: "Queue" header
-    // Row 6+: queue items
-    let row = 5; // Start after Queue header
-    if (this.state.inputMode === "add") {
-      row += this.state.tasks.length;
-    } else if (this.state.inputMode === "edit") {
-      const idx = this.state.tasks.findIndex(t => t.id === this.state.editingTaskId);
-      row += idx >= 0 ? idx : 0;
-    }
-    return row + 1; // 1-indexed
-  }
-
-  // Tracks the cursor row for input mode
   private inputRow = 0;
 
-  // Only re-render the input line for flicker-free typing
-  // Uses in-place character updates without full line redraws
-  private renderInputLine() {
-    // Do nothing - let the full render handle the initial draw
-    // and we'll just update characters in place using minimal ANSI
-  }
-
-  // Called after entering input mode to set up cursor position
-  private setupInputCursor() {
+  private setupInputCursor(): void {
     const { inputBuffer, tasks, inputMode, editingTaskId } = this.state;
 
     // Calculate row for the input line
@@ -533,19 +504,15 @@ export class RawSidebar {
     process.stdout.write(ansi.cursorTo(row, cursorCol) + ansi.showCursor);
   }
 
-  // Write a single character - wrapped in sync mode
-  private writeChar(char: string) {
-    // Use synchronized output to prevent any partial rendering
+  private writeChar(char: string): void {
     process.stdout.write(ansi.beginSync + char + ansi.endSync);
   }
 
-  // Handle backspace with sync
-  private handleBackspace() {
+  private handleBackspace(): void {
     process.stdout.write(ansi.beginSync + '\b \b' + ansi.endSync);
   }
 
-  // Redraw the entire input line with proper background
-  private redrawInputText() {
+  private redrawInputText(): void {
     const { inputBuffer, inputCursor } = this.state;
     const maxWidth = this.width - 8; // Account for "  [ ] " prefix
     const displayText = inputBuffer.slice(0, maxWidth);
@@ -562,7 +529,7 @@ export class RawSidebar {
     );
   }
 
-  private render() {
+  private render(): void {
     if (!this.running) return;
 
     const lines: string[] = [];
@@ -652,7 +619,7 @@ export class RawSidebar {
     // Get git branch
     let branch = '';
     try {
-      branch = require('child_process').execSync('git rev-parse --abbrev-ref HEAD 2>/dev/null', { encoding: 'utf8' }).trim();
+      branch = execSync('git rev-parse --abbrev-ref HEAD 2>/dev/null', { encoding: 'utf8' }).trim();
     } catch {}
 
     const folderDisplay = `📁 ${shortPath}`;
