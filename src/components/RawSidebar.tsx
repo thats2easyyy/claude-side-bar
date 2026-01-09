@@ -45,9 +45,12 @@ const ansi = {
   black: `${CSI}30m`,
   gray: `${CSI}90m`,
   white: `${CSI}37m`,
-  bgGray: `${CSI}48;5;255m`, // 256-color white (brightest)
+  bgGray: `${CSI}48;5;255m`, // Light gray background
   bgBlack: `${CSI}40m`,
   bgWhite: `${CSI}107m`,
+  // Dimmed colors for unfocused state
+  dimBg: `${CSI}48;5;255m`, // Same light gray background
+  dimText: `${CSI}38;5;248m`, // Muted gray text (unfocused)
 };
 
 type InputMode = "none" | "add" | "edit";
@@ -75,6 +78,7 @@ export class RawSidebar {
 
   private width: number;
   private height: number;
+  private focused = true;
   private running = false;
   private pollInterval: ReturnType<typeof setInterval> | null = null;
   private completionInterval: ReturnType<typeof setInterval> | null = null;
@@ -95,8 +99,11 @@ export class RawSidebar {
       require('child_process').execSync('stty -echo raw', { stdio: 'ignore' });
     } catch {}
 
-    // Setup terminal
-    process.stdout.write(ansi.hideCursor + ansi.clearScreen + ansi.cursorHome);
+    // Setup terminal - enable focus reporting
+    process.stdout.write(
+      '\x1b[?1004h' + // Enable focus reporting
+      ansi.hideCursor + ansi.clearScreen + ansi.cursorHome
+    );
 
     // Configure stdin for raw input
     if (process.stdin.isTTY) {
@@ -127,8 +134,8 @@ export class RawSidebar {
 
   stop() {
     this.running = false;
-    // Restore cursor and clear screen
-    process.stdout.write(ansi.showCursor + ansi.reset + ansi.clearScreen + ansi.cursorHome);
+    // Disable focus reporting, restore cursor and clear screen
+    process.stdout.write('\x1b[?1004l' + ansi.showCursor + ansi.reset + ansi.clearScreen + ansi.cursorHome);
     process.stdin.setRawMode(false);
     process.stdin.removeListener('data', this.handleInput);
     process.stdout.removeListener('resize', this.handleResize);
@@ -207,6 +214,24 @@ export class RawSidebar {
 
   private handleInput = (data: Buffer) => {
     const str = data.toString();
+
+    // Terminal focus events (sent by terminal when focus-events enabled)
+    if (str === '\x1b[I') {
+      // Focus in
+      if (!this.focused) {
+        this.focused = true;
+        this.render();
+      }
+      return;
+    }
+    if (str === '\x1b[O') {
+      // Focus out
+      if (this.focused) {
+        this.focused = false;
+        this.render();
+      }
+      return;
+    }
 
     if (this.state.inputMode !== "none") {
       this.handleInputMode(str);
@@ -543,21 +568,27 @@ export class RawSidebar {
     const lines: string[] = [];
     const { tasks, active, selectedIndex, inputMode, editingTaskId, inputBuffer, inputCursor } = this.state;
 
+    // Use dimmed colors when unfocused
+    const bg = this.focused ? ansi.bgGray : ansi.dimBg;
+    const text = this.focused ? ansi.black : ansi.dimText;
+    const muted = this.focused ? ansi.gray : ansi.dimText;
+    const bold = this.focused ? ansi.bold : '';
+
     // Fill with background color
-    const bgLine = `${ansi.bgGray}${' '.repeat(this.width)}${ansi.reset}`;
+    const bgLine = `${bg}${' '.repeat(this.width)}${ansi.reset}`;
 
     // Header padding
     lines.push(bgLine);
 
     // Active section
-    lines.push(`${ansi.bgGray}  ${ansi.bold}${ansi.black}Active${ansi.reset}${ansi.bgGray}${' '.repeat(this.width - 8)}${ansi.reset}`);
+    lines.push(`${bg}  ${bold}${text}Active${ansi.reset}${bg}${' '.repeat(this.width - 8)}${ansi.reset}`);
     if (active) {
       const activeContent = active.content.slice(0, this.width - 8);
       const isActiveSelected = selectedIndex === -1;
       const prefix = isActiveSelected ? '[•]' : '→';
-      lines.push(`${ansi.bgGray}  ${ansi.black}${prefix} ${activeContent}${ansi.reset}${ansi.bgGray}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(`${bg}  ${text}${prefix} ${activeContent}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     } else {
-      lines.push(`${ansi.bgGray}  ${ansi.gray}No active task${ansi.reset}${ansi.bgGray}${' '.repeat(this.width - 16)}${ansi.reset}`);
+      lines.push(`${bg}  ${muted}No active task${ansi.reset}${bg}${' '.repeat(this.width - 16)}${ansi.reset}`);
     }
 
     // Margin
@@ -565,10 +596,10 @@ export class RawSidebar {
 
     // Queue section
     const queueHeader = `Queue${tasks.length > 0 ? ` (${tasks.length})` : ''}`;
-    lines.push(`${ansi.bgGray}  ${ansi.bold}${ansi.black}${queueHeader}${ansi.reset}${ansi.bgGray}${' '.repeat(this.width - queueHeader.length - 4)}${ansi.reset}`);
+    lines.push(`${bg}  ${bold}${text}${queueHeader}${ansi.reset}${bg}${' '.repeat(this.width - queueHeader.length - 4)}${ansi.reset}`);
 
     if (tasks.length === 0 && inputMode !== "add") {
-      lines.push(`${ansi.bgGray}  ${ansi.gray}No tasks queued${ansi.reset}${ansi.bgGray}${' '.repeat(this.width - 17)}${ansi.reset}`);
+      lines.push(`${bg}  ${muted}No tasks queued${ansi.reset}${bg}${' '.repeat(this.width - 17)}${ansi.reset}`);
     }
 
     // Track where the input line is for cursor positioning
@@ -584,11 +615,11 @@ export class RawSidebar {
         inputLineRow = lines.length + 1; // 1-indexed row number
         const displayText = inputBuffer.slice(0, maxContentWidth);
         const padding = ' '.repeat(Math.max(0, maxContentWidth - displayText.length));
-        lines.push(`${ansi.bgGray}  [ ] ${ansi.black}${displayText}${padding}${ansi.reset}`);
+        lines.push(`${bg}  [ ] ${text}${displayText}${padding}${ansi.reset}`);
       } else {
         const checkbox = isSelected ? '[•]' : '[ ]';
         const content = task.content.slice(0, this.width - 8);
-        lines.push(`${ansi.bgGray}  ${ansi.black}${checkbox} ${content}${ansi.reset}${ansi.bgGray}${ansi.clearToEnd}${ansi.reset}`);
+        lines.push(`${bg}  ${text}${checkbox} ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       }
     });
 
@@ -597,7 +628,7 @@ export class RawSidebar {
       inputLineRow = lines.length + 1; // 1-indexed row number
       const displayText = inputBuffer.slice(0, maxContentWidth);
       const padding = ' '.repeat(Math.max(0, maxContentWidth - displayText.length));
-      lines.push(`${ansi.bgGray}  [ ] ${ansi.black}${displayText}${padding}${ansi.reset}`);
+      lines.push(`${bg}  [ ] ${text}${displayText}${padding}${ansi.reset}`);
     }
 
     // Fill remaining space
@@ -612,7 +643,7 @@ export class RawSidebar {
     const helpText = inputMode !== "none"
       ? "↵: submit | Esc: cancel"
       : "a: add | e: edit | d: del | ↵: send";
-    lines.push(`${ansi.bgGray}  ${ansi.gray}${helpText}${ansi.reset}${ansi.bgGray}${ansi.clearToEnd}${ansi.reset}`);
+    lines.push(`${bg}  ${muted}${helpText}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     lines.push(bgLine);
     const cwd = process.cwd();
     const parts = cwd.split('/').filter(Boolean);
@@ -628,7 +659,7 @@ export class RawSidebar {
     const branchDisplay = branch ? ` 🌱 ${branch}` : '';
     const footerContent = folderDisplay + branchDisplay;
     const footerPadding = ' '.repeat(Math.max(0, this.width - footerContent.length - 3));
-    lines.push(`${ansi.bgGray}  ${ansi.black}${footerContent}${footerPadding}${ansi.reset}`);
+    lines.push(`${bg}  ${text}${footerContent}${footerPadding}${ansi.reset}`);
 
     // Output everything at once with synchronized output to prevent partial renders
     let output = '\x1b[?2026h' + ansi.cursorHome + lines.join('\n');
