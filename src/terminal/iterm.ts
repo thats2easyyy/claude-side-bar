@@ -143,6 +143,37 @@ export async function focusSession(sessionIndex: number): Promise<boolean> {
 }
 
 /**
+ * Capture the last N lines from Claude's pane (session 1)
+ */
+export async function captureClaudePane(lines: number = 5): Promise<string | null> {
+  try {
+    const script = `
+      tell application "iTerm2"
+        tell session 1 of current tab of current window
+          return contents
+        end tell
+      end tell
+    `;
+    const result = await $`osascript -e ${script}`.text();
+    // Get last N lines
+    const allLines = result.trim().split("\n");
+    return allLines.slice(-lines).join("\n");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check if Claude Code is at a prompt (waiting for input)
+ */
+export async function isClaudeAtPrompt(): Promise<boolean> {
+  const { checkOutputForPrompt } = await import("./prompt");
+  const output = await captureClaudePane(10);
+  if (!output) return false;
+  return checkOutputForPrompt(output);
+}
+
+/**
  * Get environment info for debugging
  */
 export function getITermEnvInfo(): {

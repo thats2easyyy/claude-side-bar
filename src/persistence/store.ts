@@ -49,6 +49,12 @@ export interface ActiveTask {
   sentAt: string;
 }
 
+export interface DoneTask {
+  id: string;
+  content: string;
+  completedAt: string;
+}
+
 export interface StatuslineData {
   contextPercent: number;
   contextTokens: number;
@@ -257,10 +263,34 @@ export function activateTask(taskId: string): ActiveTask | null {
   return activeTask;
 }
 
-// Complete active task (move to history)
+// Recently done tasks - PROJECT SPECIFIC
+export function getRecentlyDone(): DoneTask[] {
+  return readProjectJson<DoneTask[]>("done.json", []);
+}
+
+export function addToDone(task: { id: string; content: string }): void {
+  const done = getRecentlyDone();
+  const doneTask: DoneTask = {
+    id: task.id,
+    content: task.content,
+    completedAt: new Date().toISOString(),
+  };
+  // Keep only last 10 done tasks
+  done.unshift(doneTask);
+  if (done.length > 10) done.pop();
+  writeProjectJson("done.json", done);
+}
+
+export function removeFromDone(id: string): void {
+  const done = getRecentlyDone().filter((t) => t.id !== id);
+  writeProjectJson("done.json", done);
+}
+
+// Complete active task (move to done list and history)
 export function completeActiveTask(): void {
   const active = getActiveTask();
   if (active) {
+    addToDone(active);
     appendToHistory(active.content);
     clearActiveTask();
   }

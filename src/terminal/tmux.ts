@@ -237,22 +237,10 @@ export async function captureClaudePane(lines: number = 10): Promise<string | nu
 
 /**
  * Check if Claude Code is at an input prompt (waiting for input)
- * Returns true if Claude appears to be waiting for user input
  */
 export async function isClaudeAtPrompt(): Promise<boolean> {
-  const output = await captureClaudePane(5);
+  const { checkOutputForPrompt } = await import("./prompt");
+  const output = await captureClaudePane(10);
   if (!output) return false;
-
-  const lines = output.trim().split("\n");
-  const lastLine = lines[lines.length - 1] || "";
-
-  // Claude Code shows ">" at start when waiting for input
-  // Also check for common prompt patterns
-  const promptPatterns = [
-    /^>\s*$/,           // Just ">" with optional whitespace
-    /^> $/,             // "> " with space
-    /^\s*>\s*$/,        // Whitespace + ">" + whitespace
-  ];
-
-  return promptPatterns.some((pattern) => pattern.test(lastLine));
+  return checkOutputForPrompt(output);
 }

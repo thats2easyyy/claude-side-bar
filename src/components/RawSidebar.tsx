@@ -11,26 +11,37 @@ import {
   addTask,
   updateTask,
   removeTask,
+  getActiveTask,
+  setActiveTask,
+  activateTask,
+  completeActiveTask,
+  getRecentlyDone,
+  removeFromDone,
   type Task,
+  type ActiveTask,
+  type DoneTask,
   type StatuslineData,
   type ClaudeTodo,
 } from "../persistence/store";
-import { sendToClaudePane as tmuxSendToClaudePane, focusClaudePane as tmuxFocusClaudePane, isInTmux } from "../terminal/tmux";
-import { sendToClaudePane as itermSendToClaudePane, focusSession, isInITerm } from "../terminal/iterm";
+import * as tmux from "../terminal/tmux";
+import * as iterm from "../terminal/iterm";
+
+// Check if using iTerm2 natively (not inside tmux)
+function useITerm(): boolean {
+  return iterm.isInITerm() && !tmux.isInTmux();
+}
 
 // Unified functions that work with both iTerm2 and tmux
 async function sendToClaudePane(text: string): Promise<boolean> {
-  if (isInITerm() && !isInTmux()) {
-    return itermSendToClaudePane(text);
-  }
-  return tmuxSendToClaudePane(text);
+  return useITerm() ? iterm.sendToClaudePane(text) : tmux.sendToClaudePane(text);
 }
 
 async function focusClaudePane(): Promise<boolean> {
-  if (isInITerm() && !isInTmux()) {
-    return focusSession(1);
-  }
-  return tmuxFocusClaudePane();
+  return useITerm() ? iterm.focusSession(1) : tmux.focusClaudePane();
+}
+
+async function isClaudeAtPrompt(): Promise<boolean> {
+  return useITerm() ? iterm.isClaudeAtPrompt() : tmux.isClaudeAtPrompt();
 }
 
 // ANSI escape codes
@@ -90,9 +101,13 @@ function wrapText(text: string, maxWidth: number): string[] {
 
 interface State {
   tasks: Task[];
+  activeTask: ActiveTask | null;
+  doneTasks: DoneTask[];
   claudeTodos: ClaudeTodo[];
   statusline: StatuslineData | null;
+  selectedSection: "queue" | "done";
   selectedIndex: number;
+  doneSelectedIndex: number;
   inputMode: InputMode;
   editingTaskId: string | null;
   inputBuffer: string;
@@ -102,9 +117,13 @@ interface State {
 export class RawSidebar {
   private state: State = {
     tasks: [],
+    activeTask: null,
+    doneTasks: [],
     claudeTodos: [],
     statusline: null,
+    selectedSection: "queue",
     selectedIndex: 0,
+    doneSelectedIndex: 0,
     inputMode: "none",
     editingTaskId: null,
     inputBuffer: "",
@@ -116,6 +135,7 @@ export class RawSidebar {
   private focused = true;
   private running = false;
   private pollInterval: ReturnType<typeof setInterval> | null = null;
+  private completionInterval: ReturnType<typeof setInterval> | null = null;
   private onClose?: () => void;
   private isPasting = false;
   private pasteBuffer = "";
@@ -159,6 +179,11 @@ export class RawSidebar {
       }
     }, 1000);
 
+    // Start polling for task completion (check if Claude is idle)
+    this.completionInterval = setInterval(() => {
+      this.checkCompletion();
+    }, 3000);
+
     // Handle input
     process.stdin.on('data', this.handleInput);
 
@@ -185,21 +210,46 @@ export class RawSidebar {
     if (this.pollInterval) {
       clearInterval(this.pollInterval);
     }
+    if (this.completionInterval) {
+      clearInterval(this.completionInterval);
+    }
   }
 
   private loadData(): void {
     const newTasks = getTasks();
+    const newActiveTask = getActiveTask();
+    const newDoneTasks = getRecentlyDone();
     const newClaudeTodos = getClaudeTodos()?.todos || [];
     const newStatusline = getStatusline();
+
     const tasksChanged = JSON.stringify(newTasks) !== JSON.stringify(this.state.tasks);
+    const activeChanged = JSON.stringify(newActiveTask) !== JSON.stringify(this.state.activeTask);
+    const doneChanged = JSON.stringify(newDoneTasks) !== JSON.stringify(this.state.doneTasks);
     const claudeTodosChanged = JSON.stringify(newClaudeTodos) !== JSON.stringify(this.state.claudeTodos);
     const statuslineChanged = JSON.stringify(newStatusline) !== JSON.stringify(this.state.statusline);
 
-    if (tasksChanged || claudeTodosChanged || statuslineChanged) {
+    if (tasksChanged || activeChanged || doneChanged || claudeTodosChanged || statuslineChanged) {
       this.state.tasks = newTasks;
+      this.state.activeTask = newActiveTask;
+      this.state.doneTasks = newDoneTasks;
       this.state.claudeTodos = newClaudeTodos;
       this.state.statusline = newStatusline;
       this.render();
+    }
+  }
+
+  // Check if Claude is idle and complete active task
+  private async checkCompletion(): Promise<void> {
+    if (!this.state.activeTask) return;
+
+    try {
+      const isIdle = await isClaudeAtPrompt();
+      if (isIdle) {
+        completeActiveTask();
+        this.loadData();
+      }
+    } catch {
+      // Ignore errors from prompt detection
     }
   }
 
@@ -505,50 +555,107 @@ export class RawSidebar {
       process.exit(0);
     }
 
-    // Up arrow or k (wraps to bottom)
+    // Up arrow or k (navigates queue and done sections)
     if (str === '\x1b[A' || str === '\x1bOA' || str === 'k') {
-      if (this.state.tasks.length > 0) {
-        if (this.state.selectedIndex > 0) {
+      const { selectedSection, selectedIndex, doneSelectedIndex, tasks, doneTasks } = this.state;
+
+      if (selectedSection === "queue") {
+        if (tasks.length === 0) {
+          // No queue items, try to go to done
+          if (doneTasks.length > 0) {
+            this.state.selectedSection = "done";
+            this.state.doneSelectedIndex = doneTasks.length - 1;
+          }
+        } else if (selectedIndex > 0) {
           this.state.selectedIndex--;
         } else {
-          this.state.selectedIndex = this.state.tasks.length - 1;
+          // At top of queue, wrap to bottom of done (or bottom of queue)
+          if (doneTasks.length > 0) {
+            this.state.selectedSection = "done";
+            this.state.doneSelectedIndex = Math.min(doneTasks.length - 1, 4); // Max 5 shown
+          } else {
+            this.state.selectedIndex = tasks.length - 1;
+          }
         }
-        this.render();
+      } else {
+        // In done section
+        if (doneSelectedIndex > 0) {
+          this.state.doneSelectedIndex--;
+        } else {
+          // At top of done, wrap to bottom of queue (or bottom of done)
+          if (tasks.length > 0) {
+            this.state.selectedSection = "queue";
+            this.state.selectedIndex = tasks.length - 1;
+          } else {
+            this.state.doneSelectedIndex = Math.min(doneTasks.length - 1, 4);
+          }
+        }
       }
+      this.render();
       return;
     }
 
-    // Down arrow or j (wraps to top)
+    // Down arrow or j (navigates queue and done sections)
     if (str === '\x1b[B' || str === '\x1bOB' || str === 'j') {
-      if (this.state.tasks.length > 0) {
-        if (this.state.selectedIndex < this.state.tasks.length - 1) {
+      const { selectedSection, selectedIndex, doneSelectedIndex, tasks, doneTasks } = this.state;
+
+      if (selectedSection === "queue") {
+        if (tasks.length === 0) {
+          // No queue items, try to go to done
+          if (doneTasks.length > 0) {
+            this.state.selectedSection = "done";
+            this.state.doneSelectedIndex = 0;
+          }
+        } else if (selectedIndex < tasks.length - 1) {
           this.state.selectedIndex++;
         } else {
-          this.state.selectedIndex = 0;
+          // At bottom of queue, wrap to top of done (or top of queue)
+          if (doneTasks.length > 0) {
+            this.state.selectedSection = "done";
+            this.state.doneSelectedIndex = 0;
+          } else {
+            this.state.selectedIndex = 0;
+          }
         }
-        this.render();
+      } else {
+        // In done section
+        const maxDoneIndex = Math.min(doneTasks.length - 1, 4); // Max 5 shown
+        if (doneSelectedIndex < maxDoneIndex) {
+          this.state.doneSelectedIndex++;
+        } else {
+          // At bottom of done, wrap to top of queue (or top of done)
+          if (tasks.length > 0) {
+            this.state.selectedSection = "queue";
+            this.state.selectedIndex = 0;
+          } else {
+            this.state.doneSelectedIndex = 0;
+          }
+        }
       }
+      this.render();
       return;
     }
 
-    // Number keys 1-9
+    // Number keys 1-9 (select queue item, switches to queue section)
     if (/^[1-9]$/.test(str)) {
       const index = parseInt(str, 10) - 1;
       if (index < this.state.tasks.length) {
+        this.state.selectedSection = "queue";
         this.state.selectedIndex = index;
         this.render();
       }
       return;
     }
 
-    // Enter - send task to Claude
+    // Enter - send task to Claude (only works in queue section)
     if (str === '\r' || str === '\n') {
+      if (this.state.selectedSection !== "queue") return;
       const task = this.state.tasks[this.state.selectedIndex];
       if (task) {
-        // Send to Claude and remove from queue
+        // Send to Claude and move to active
         sendToClaudePane(task.content);
-        removeTask(task.id);
-        this.state.tasks = getTasks();
+        activateTask(task.id);
+        this.loadData();
         this.state.selectedIndex = Math.max(0, this.state.selectedIndex - 1);
         this.render();
         focusClaudePane();
@@ -556,9 +663,10 @@ export class RawSidebar {
       return;
     }
 
-    // Ctrl+Enter or 'c' - clarify mode (send task with interview prompt)
+    // Ctrl+Enter or 'c' - clarify mode (only works in queue section)
     // CSI u format: \x1b[13;5u (iTerm2), 'c' as fallback
     if (str === '\x1b[13;5u' || str === '\x1b\r' || str === '\x1b\n' || str === 'c') {
+      if (this.state.selectedSection !== "queue") return;
       const task = this.state.tasks[this.state.selectedIndex];
       if (task) {
         const clarifyPrompt = `CLARIFY MODE
@@ -577,8 +685,8 @@ Guidelines:
 After clarification is complete, write specs to an Atomic Plan, then execute the task.`;
 
         sendToClaudePane(clarifyPrompt);
-        removeTask(task.id);
-        this.state.tasks = getTasks();
+        activateTask(task.id);
+        this.loadData();
         this.state.selectedIndex = Math.max(0, this.state.selectedIndex - 1);
         this.render();
         focusClaudePane();
@@ -586,9 +694,10 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
       return;
     }
 
-    // 'a' - add task
+    // 'a' - add task (always switches to queue section)
     if (str === 'a') {
       this.pausePolling();
+      this.state.selectedSection = "queue";
       this.state.inputMode = "add";
       this.state.inputBuffer = "";
       this.state.inputCursor = 0;
@@ -598,8 +707,9 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
       return;
     }
 
-    // 'e' - edit task
+    // 'e' - edit task (only works in queue section)
     if (str === 'e') {
+      if (this.state.selectedSection !== "queue") return;
       const task = this.state.tasks[this.state.selectedIndex];
       if (task) {
         this.pausePolling();
@@ -615,14 +725,35 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
       return;
     }
 
-    // 'd' - delete task
+    // 'd' - delete task (works on queue or done section)
     if (str === 'd') {
-      const task = this.state.tasks[this.state.selectedIndex];
-      if (task) {
-        removeTask(task.id);
-        this.state.tasks = getTasks();
-        this.state.selectedIndex = Math.max(0, this.state.selectedIndex - 1);
-        this.render();
+      if (this.state.selectedSection === "queue") {
+        const task = this.state.tasks[this.state.selectedIndex];
+        if (task) {
+          removeTask(task.id);
+          this.state.tasks = getTasks();
+          this.state.selectedIndex = Math.max(0, this.state.selectedIndex - 1);
+          this.render();
+        }
+      } else {
+        // Delete from done section
+        const task = this.state.doneTasks[this.state.doneSelectedIndex];
+        if (task) {
+          removeFromDone(task.id);
+          this.state.doneTasks = getRecentlyDone();
+          // Adjust selection if needed
+          if (this.state.doneTasks.length === 0) {
+            // No more done tasks, go back to queue
+            this.state.selectedSection = "queue";
+            this.state.selectedIndex = Math.max(0, this.state.tasks.length - 1);
+          } else {
+            this.state.doneSelectedIndex = Math.min(
+              this.state.doneSelectedIndex,
+              this.state.doneTasks.length - 1
+            );
+          }
+          this.render();
+        }
       }
       return;
     }
@@ -752,6 +883,29 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
       lines.push(bgLine); // Margin after Claude section
     }
 
+    // Active task section (task currently being worked on)
+    const { activeTask, doneTasks } = this.state;
+    if (activeTask) {
+      lines.push(`${bg}  ${bold}${text}Active${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      const content = activeTask.content.slice(0, maxContentWidth - 2);
+      lines.push(`${bg}  ${ansi.green}▶ ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(bgLine);
+    }
+
+    // Done section (recently completed tasks, navigable for deletion)
+    const { selectedSection, doneSelectedIndex } = this.state;
+    if (doneTasks.length > 0) {
+      lines.push(`${bg}  ${bold}${text}Done${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      doneTasks.slice(0, 5).forEach((task, index) => {
+        const isSelected = selectedSection === "done" && index === doneSelectedIndex && this.focused;
+        const content = task.content.slice(0, maxContentWidth - 2);
+        const icon = isSelected ? "[✓]" : " ✓ ";
+        const color = isSelected ? text : muted;
+        lines.push(`${bg}  ${color}${icon} ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      });
+      lines.push(bgLine);
+    }
+
     // To-dos section
     const queueHeader = `To-dos${tasks.length > 0 ? ` (${tasks.length})` : ''}`;
     lines.push(`${bg}  ${bold}${text}${queueHeader}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
@@ -761,7 +915,7 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
 
     // Queue items
     tasks.forEach((task, index) => {
-      const isSelected = index === selectedIndex;
+      const isSelected = selectedSection === "queue" && index === selectedIndex;
       const isEditing = inputMode === "edit" && editingTaskId === task.id;
 
       if (isEditing) {
