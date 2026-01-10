@@ -433,19 +433,27 @@ export class RawSidebar {
       process.exit(0);
     }
 
-    // Up arrow or k
+    // Up arrow or k (wraps to bottom)
     if (str === '\x1b[A' || str === '\x1bOA' || str === 'k') {
-      if (this.state.selectedIndex > 0) {
-        this.state.selectedIndex--;
+      if (this.state.tasks.length > 0) {
+        if (this.state.selectedIndex > 0) {
+          this.state.selectedIndex--;
+        } else {
+          this.state.selectedIndex = this.state.tasks.length - 1;
+        }
         this.render();
       }
       return;
     }
 
-    // Down arrow or j
+    // Down arrow or j (wraps to top)
     if (str === '\x1b[B' || str === '\x1bOB' || str === 'j') {
-      if (this.state.selectedIndex < this.state.tasks.length - 1) {
-        this.state.selectedIndex++;
+      if (this.state.tasks.length > 0) {
+        if (this.state.selectedIndex < this.state.tasks.length - 1) {
+          this.state.selectedIndex++;
+        } else {
+          this.state.selectedIndex = 0;
+        }
         this.render();
       }
       return;
