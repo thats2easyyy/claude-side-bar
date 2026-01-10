@@ -649,8 +649,8 @@ export class RawSidebar {
       const isActiveSelected = selectedIndex === -1;
       const maxContentWidth = this.width - 8;
 
-      if (isActiveSelected && active.content.length > maxContentWidth) {
-        // Wrap text when selected
+      if (isActiveSelected && this.focused && active.content.length > maxContentWidth) {
+        // Wrap text when selected (only when focused)
         const wrappedLines = wrapText(active.content, maxContentWidth);
         wrappedLines.forEach((line, i) => {
           const prefix = i === 0 ? '[•]' : '   ';
@@ -658,7 +658,7 @@ export class RawSidebar {
         });
       } else {
         const activeContent = active.content.slice(0, maxContentWidth);
-        const prefix = isActiveSelected ? '[•]' : '→';
+        const prefix = (isActiveSelected && this.focused) ? '[•]' : '→';
         lines.push(`${bg}  ${text}${prefix} ${activeContent}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       }
     } else {
@@ -695,15 +695,15 @@ export class RawSidebar {
           const padding = ' '.repeat(Math.max(0, maxContentWidth - line.length));
           lines.push(`${bg}  ${prefix} ${text}${line}${padding}${ansi.reset}`);
         });
-      } else if (isSelected && task.content.length > maxContentWidth) {
-        // Wrap text when selected
+      } else if (isSelected && this.focused && task.content.length > maxContentWidth) {
+        // Wrap text when selected (only when focused)
         const wrappedLines = wrapText(task.content, maxContentWidth);
         wrappedLines.forEach((line, i) => {
           const checkbox = i === 0 ? '[•]' : '   ';
           lines.push(`${bg}  ${text}${checkbox} ${line}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
         });
       } else {
-        const checkbox = isSelected ? '[•]' : '[ ]';
+        const checkbox = (isSelected && this.focused) ? '[•]' : '[ ]';
         const content = task.content.slice(0, maxContentWidth);
         lines.push(`${bg}  ${text}${checkbox} ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       }
