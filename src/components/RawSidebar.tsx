@@ -757,7 +757,7 @@ export class RawSidebar {
 
     // Fill remaining space
     const contentHeight = lines.length;
-    const footerHeight = statusline ? 6 : 4;
+    const footerHeight = statusline ? 4 : 3;
     const remainingHeight = this.height - contentHeight - footerHeight;
     for (let i = 0; i < remainingHeight; i++) {
       lines.push(bgLine);
