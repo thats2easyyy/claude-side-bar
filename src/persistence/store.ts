@@ -1,13 +1,41 @@
 /**
  * Persistence layer for sidebar data
- * Stores tasks (queue), active task, and history in ~/.claude-sidebar/
+ * Stores tasks (queue), active task, and history per-project in ~/.claude-sidebar/projects/<hash>/
+ * Global data (statusline, socket) stored in ~/.claude-sidebar/
  */
 
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync } from "fs";
+import { createHash } from "crypto";
 import { homedir } from "os";
 import { join } from "path";
 
 const SIDEBAR_DIR = join(homedir(), ".claude-sidebar");
+
+// Get a short hash of the working directory for project isolation
+function getProjectHash(): string {
+  const cwd = process.cwd();
+  return createHash("sha256").update(cwd).digest("hex").slice(0, 12);
+}
+
+// Get the project-specific directory
+function getProjectDir(): string {
+  return join(SIDEBAR_DIR, "projects", getProjectHash());
+}
+
+// Store a mapping of hash -> path for easier debugging
+function updateProjectMapping(): void {
+  const mappingPath = join(SIDEBAR_DIR, "projects", "mapping.json");
+  let mapping: Record<string, string> = {};
+  try {
+    if (existsSync(mappingPath)) {
+      mapping = JSON.parse(readFileSync(mappingPath, "utf-8"));
+    }
+  } catch {}
+  mapping[getProjectHash()] = process.cwd();
+  ensureDir();
+  mkdirSync(join(SIDEBAR_DIR, "projects"), { recursive: true });
+  writeFileSync(mappingPath, JSON.stringify(mapping, null, 2));
+}
 
 export interface Task {
   id: string;
@@ -33,6 +61,11 @@ export interface StatuslineData {
   updatedAt: string;
 }
 
+export interface ClaudeConfig {
+  enabledPlugins: string[];
+  mcpServers: string[];
+}
+
 // Get the data directory path
 export function getDataDir(): string {
   return SIDEBAR_DIR;
@@ -45,7 +78,7 @@ export function ensureDir(): void {
   }
 }
 
-// Generic read/write helpers
+// Generic read/write helpers for GLOBAL data
 function readJson<T>(filename: string, defaultValue: T): T {
   const filepath = join(SIDEBAR_DIR, filename);
   try {
@@ -64,13 +97,35 @@ function writeJson<T>(filename: string, data: T): void {
   writeFileSync(filepath, JSON.stringify(data, null, 2));
 }
 
-// Tasks (user's task queue)
+// Read/write helpers for PROJECT-SPECIFIC data
+function readProjectJson<T>(filename: string, defaultValue: T): T {
+  const projectDir = getProjectDir();
+  const filepath = join(projectDir, filename);
+  try {
+    if (existsSync(filepath)) {
+      return JSON.parse(readFileSync(filepath, "utf-8"));
+    }
+  } catch {
+    // Return default on error
+  }
+  return defaultValue;
+}
+
+function writeProjectJson<T>(filename: string, data: T): void {
+  const projectDir = getProjectDir();
+  mkdirSync(projectDir, { recursive: true });
+  updateProjectMapping();
+  const filepath = join(projectDir, filename);
+  writeFileSync(filepath, JSON.stringify(data, null, 2));
+}
+
+// Tasks (user's task queue) - PROJECT SPECIFIC
 export function getTasks(): Task[] {
-  return readJson<Task[]>("tasks.json", []);
+  return readProjectJson<Task[]>("tasks.json", []);
 }
 
 export function setTasks(tasks: Task[]): void {
-  writeJson("tasks.json", tasks);
+  writeProjectJson("tasks.json", tasks);
 }
 
 export function addTask(content: string): Task {
@@ -99,9 +154,9 @@ export function removeTask(id: string): void {
   setTasks(tasks);
 }
 
-// Active task (currently being worked on by Claude)
+// Active task (currently being worked on by Claude) - PROJECT SPECIFIC
 export function getActiveTask(): ActiveTask | null {
-  return readJson<ActiveTask | null>("active.json", null);
+  return readProjectJson<ActiveTask | null>("active.json", null);
 }
 
 // Statusline data (from Claude Code)
@@ -109,32 +164,62 @@ export function getStatusline(): StatuslineData | null {
   return readJson<StatuslineData | null>("statusline.json", null);
 }
 
+// Claude Code config (plugins and MCPs)
+export function getClaudeConfig(): ClaudeConfig {
+  const claudeSettingsPath = join(homedir(), ".claude", "settings.json");
+  const defaultConfig: ClaudeConfig = { enabledPlugins: [], mcpServers: [] };
+
+  try {
+    if (existsSync(claudeSettingsPath)) {
+      const settings = JSON.parse(readFileSync(claudeSettingsPath, "utf-8"));
+
+      // Extract enabled plugins (keys where value is true)
+      const enabledPlugins: string[] = settings.enabledPlugins
+        ? Object.entries(settings.enabledPlugins)
+            .filter(([_, enabled]) => enabled === true)
+            .map(([name]) => name.split("@")[0] || name)
+        : [];
+
+      // Extract MCP server names
+      const mcpServers: string[] = settings.mcpServers
+        ? Object.keys(settings.mcpServers)
+        : [];
+
+      return { enabledPlugins, mcpServers };
+    }
+  } catch {
+    // Return default on error
+  }
+  return defaultConfig;
+}
+
 export function setActiveTask(task: Task | null): void {
   if (task) {
-    writeJson("active.json", {
+    writeProjectJson("active.json", {
       id: task.id,
       content: task.content,
       sentAt: new Date().toISOString(),
     });
   } else {
-    writeJson("active.json", null);
+    writeProjectJson("active.json", null);
   }
 }
 
 export function clearActiveTask(): void {
-  writeJson("active.json", null);
+  writeProjectJson("active.json", null);
 }
 
-// History (completed tasks - append-only log)
+// History (completed tasks - append-only log) - PROJECT SPECIFIC
 export function appendToHistory(content: string): void {
-  ensureDir();
-  const filepath = join(SIDEBAR_DIR, "history.log");
+  const projectDir = getProjectDir();
+  mkdirSync(projectDir, { recursive: true });
+  const filepath = join(projectDir, "history.log");
   const timestamp = new Date().toISOString();
   const entry = `${timestamp} | ${content}\n`;
   appendFileSync(filepath, entry);
 }
 
-// Move task from queue to active
+// Move task from queue to active - PROJECT SPECIFIC
 export function activateTask(taskId: string): ActiveTask | null {
   const tasks = getTasks();
   const taskIndex = tasks.findIndex((t) => t.id === taskId);
@@ -152,7 +237,7 @@ export function activateTask(taskId: string): ActiveTask | null {
     content: task.content,
     sentAt: new Date().toISOString(),
   };
-  writeJson("active.json", activeTask);
+  writeProjectJson("active.json", activeTask);
 
   return activeTask;
 }

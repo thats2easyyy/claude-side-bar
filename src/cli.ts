@@ -72,9 +72,11 @@ program
   .description("Launch sidebar in split pane (iTerm2 preferred, tmux fallback)")
   .option("--tmux", "Force tmux mode even in iTerm2")
   .action(async (options) => {
-    // Get the path to this script
+    // Get the path to this script and current working directory
     const scriptPath = process.argv[1];
-    const command = `bun ${scriptPath} show`;
+    const cwd = process.cwd();
+    // Include cd to ensure sidebar runs in the same directory (for per-project tasks)
+    const command = `cd "${cwd}" && bun ${scriptPath} show`;
 
     // Prefer iTerm2 if available (avoids scrollback corruption)
     if (isInITerm() && !options.tmux) {
