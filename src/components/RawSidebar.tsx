@@ -644,7 +644,7 @@ export class RawSidebar {
     lines.push(bgLine);
 
     // Active section
-    lines.push(`${bg}  ${bold}${text}Active${ansi.reset}${bg}${' '.repeat(this.width - 8)}${ansi.reset}`);
+    lines.push(`${bg}  ${bold}${text}Active${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     if (active) {
       const isActiveSelected = selectedIndex === -1;
       const maxContentWidth = this.width - 8;
@@ -662,7 +662,7 @@ export class RawSidebar {
         lines.push(`${bg}  ${text}${prefix} ${activeContent}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       }
     } else {
-      lines.push(`${bg}  ${muted}No active task${ansi.reset}${bg}${' '.repeat(this.width - 16)}${ansi.reset}`);
+      lines.push(`${bg}  ${muted}No active task${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
 
     // Margin
@@ -670,10 +670,10 @@ export class RawSidebar {
 
     // To-dos section
     const queueHeader = `To-dos${tasks.length > 0 ? ` (${tasks.length})` : ''}`;
-    lines.push(`${bg}  ${bold}${text}${queueHeader}${ansi.reset}${bg}${' '.repeat(this.width - queueHeader.length - 4)}${ansi.reset}`);
+    lines.push(`${bg}  ${bold}${text}${queueHeader}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
 
     if (tasks.length === 0 && inputMode !== "add") {
-      lines.push(`${bg}  ${muted}No to-dos${ansi.reset}${bg}${' '.repeat(this.width - 11)}${ansi.reset}`);
+      lines.push(`${bg}  ${muted}No to-dos${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
 
     // Track where the input line is for cursor positioning
@@ -749,8 +749,7 @@ export class RawSidebar {
     const folderDisplay = `📁 ${shortPath}`;
     const branchDisplay = branch ? ` 🌱 ${branch}` : '';
     const footerContent = folderDisplay + branchDisplay;
-    const footerPadding = ' '.repeat(Math.max(0, this.width - footerContent.length - 3));
-    lines.push(`${bg}  ${text}${footerContent}${footerPadding}${ansi.reset}`);
+    lines.push(`${bg}  ${text}${footerContent}${ansi.clearToEnd}${ansi.reset}`);
     lines.push(bgLine); // Bottom padding
 
     // Output everything at once with synchronized output to prevent partial renders
