@@ -556,11 +556,12 @@ export class RawSidebar {
       return;
     }
 
-    // 'i' - interview mode (send task with interview prompt)
-    if (str === 'i') {
+    // Ctrl+Enter or 'c' - clarify mode (send task with interview prompt)
+    // CSI u format: \x1b[13;5u (iTerm2), 'c' as fallback
+    if (str === '\x1b[13;5u' || str === '\x1b\r' || str === '\x1b\n' || str === 'c') {
       const task = this.state.tasks[this.state.selectedIndex];
       if (task) {
-        const interviewPrompt = `INTERVIEW MODE
+        const clarifyPrompt = `CLARIFY MODE
 
 TASK: ${task.content}
 
@@ -573,9 +574,9 @@ Guidelines:
 - Ask about context handling: clear window / compact / keep / decide for me
 - Ask about Atomic Plans: create a plan / just execute / decide for me
 
-After the interview is complete, write specs to an Atomic Plan, then execute the task.`;
+After clarification is complete, write specs to an Atomic Plan, then execute the task.`;
 
-        sendToClaudePane(interviewPrompt);
+        sendToClaudePane(clarifyPrompt);
         removeTask(task.id);
         this.state.tasks = getTasks();
         this.state.selectedIndex = Math.max(0, this.state.selectedIndex - 1);
@@ -732,6 +733,7 @@ After the interview is complete, write specs to an Atomic Plan, then execute the
     const activeTodos = claudeTodos.filter(t => t.status !== "completed");
     const maxContentWidth = this.width - 8;
 
+    // Only show Claude section if there are active todos
     if (activeTodos.length > 0) {
       lines.push(`${bg}  ${bold}${text}Claude${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       activeTodos.forEach((todo) => {
@@ -747,13 +749,8 @@ After the interview is complete, write specs to an Atomic Plan, then execute the
         const content = todo.content.slice(0, maxContentWidth - 2);
         lines.push(`${bg}  ${todoColor}${statusIcon} ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       });
-    } else {
-      lines.push(`${bg}  ${bold}${text}Claude${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-      lines.push(`${bg}  ${muted}No active tasks${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(bgLine); // Margin after Claude section
     }
-
-    // Margin
-    lines.push(bgLine);
 
     // To-dos section
     const queueHeader = `To-dos${tasks.length > 0 ? ` (${tasks.length})` : ''}`;
@@ -818,7 +815,7 @@ After the interview is complete, write specs to an Atomic Plan, then execute the
     // Footer
     const helpText = inputMode !== "none"
       ? "↵: submit | Esc: cancel"
-      : "a: add | e: edit | d: del | ↵: send | i: interview";
+      : "a: add | e: edit | d: del | ↵: send | c: clarify";
     lines.push(`${bg}  ${muted}${helpText}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     lines.push(bgLine);
 
