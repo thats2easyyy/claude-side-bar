@@ -654,26 +654,27 @@ export class RawSidebar {
     // Header padding
     lines.push(bgLine);
 
-    // Statusline info at top (if available from Claude Code)
+    // Repo and branch at top (from statusline if available, else fallback)
     const { statusline } = this.state;
-    if (statusline) {
-      // Color-code context based on usage level
-      const ctxPercent = statusline.contextPercent;
-      const ctxColor = ctxPercent >= 80 ? ansi.red : ctxPercent >= 60 ? ansi.yellow : ansi.green;
-
-      // Visual progress bar (10 chars wide)
-      const barWidth = 10;
-      const filledCount = Math.round((ctxPercent / 100) * barWidth);
-      const emptyCount = barWidth - filledCount;
-      const progressBar = '█'.repeat(filledCount) + '░'.repeat(emptyCount);
-
-      const ctxDisplay = `${ctxColor}${progressBar}${ansi.reset}${bg} ${text}${ctxPercent}%`;
-      const costDisplay = `$${statusline.costUsd.toFixed(2)}`;
-      const durationDisplay = `${statusline.durationMin}m`;
-      const statusInfo = `${ctxDisplay}  ${costDisplay}  ${durationDisplay}`;
-      lines.push(`${bg}  ${statusInfo}${ansi.clearToEnd}${ansi.reset}`);
-      lines.push(bgLine); // Space after statusline
+    let branch = statusline?.branch || '';
+    let repo = statusline?.repo || '';
+    if (!branch) {
+      try {
+        branch = execSync('git rev-parse --abbrev-ref HEAD 2>/dev/null', { encoding: 'utf8' }).trim();
+      } catch {}
     }
+    if (!repo) {
+      const cwd = process.cwd();
+      const parts = cwd.split('/').filter(Boolean);
+      repo = parts[parts.length - 1] || cwd;
+    }
+    const branchDisplay = branch ? `${branch}` : '';
+    const repoDisplay = repo ? `${repo}` : '';
+    const headerContent = branchDisplay && repoDisplay
+      ? `${repoDisplay} · ${branchDisplay}`
+      : repoDisplay || branchDisplay;
+    lines.push(`${bg}  ${text}${headerContent}${ansi.clearToEnd}${ansi.reset}`);
+    lines.push(bgLine); // Space after header
 
     // Active section
     lines.push(`${bg}  ${bold}${text}Active${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
@@ -756,7 +757,7 @@ export class RawSidebar {
 
     // Fill remaining space
     const contentHeight = lines.length;
-    const footerHeight = 4;
+    const footerHeight = statusline ? 6 : 4;
     const remainingHeight = this.height - contentHeight - footerHeight;
     for (let i = 0; i < remainingHeight; i++) {
       lines.push(bgLine);
@@ -769,26 +770,24 @@ export class RawSidebar {
     lines.push(`${bg}  ${muted}${helpText}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     lines.push(bgLine);
 
-    // Branch and repo (from statusline if available, else fallback)
-    let branch = statusline?.branch || '';
-    let repo = statusline?.repo || '';
-    if (!branch) {
-      try {
-        branch = execSync('git rev-parse --abbrev-ref HEAD 2>/dev/null', { encoding: 'utf8' }).trim();
-      } catch {}
-    }
-    if (!repo) {
-      const cwd = process.cwd();
-      const parts = cwd.split('/').filter(Boolean);
-      repo = parts[parts.length - 1] || cwd;
-    }
+    // Context metadata at bottom (if available from Claude Code)
+    if (statusline) {
+      // Color-code context based on usage level
+      const ctxPercent = statusline.contextPercent;
+      const ctxColor = ctxPercent >= 80 ? ansi.red : ctxPercent >= 60 ? ansi.yellow : ansi.green;
 
-    const branchDisplay = branch ? `${branch}` : '';
-    const repoDisplay = repo ? `${repo}` : '';
-    const footerContent = branchDisplay && repoDisplay
-      ? `${repoDisplay} · ${branchDisplay}`
-      : repoDisplay || branchDisplay;
-    lines.push(`${bg}  ${text}${footerContent}${ansi.clearToEnd}${ansi.reset}`);
+      // Visual progress bar (10 chars wide)
+      const barWidth = 10;
+      const filledCount = Math.round((ctxPercent / 100) * barWidth);
+      const emptyCount = barWidth - filledCount;
+      const progressBar = '█'.repeat(filledCount) + '░'.repeat(emptyCount);
+
+      const ctxDisplay = `${ctxColor}${progressBar}${ansi.reset}${bg} ${text}${ctxPercent}%`;
+      const costDisplay = `$${statusline.costUsd.toFixed(2)}`;
+      const durationDisplay = `${statusline.durationMin}m`;
+      const statusInfo = `${ctxDisplay}  ${costDisplay}  ${durationDisplay}`;
+      lines.push(`${bg}  ${statusInfo}${ansi.clearToEnd}${ansi.reset}`);
+    }
     lines.push(bgLine); // Bottom padding
 
     // Output everything at once with synchronized output to prevent partial renders
