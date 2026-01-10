@@ -695,8 +695,8 @@ export class RawSidebar {
         lines.push(`${bg}  ${prefix} ${text}${line}${padding}${ansi.reset}`);
       });
     } else {
-      // Show hint to add task (always visible when not in add mode)
-      lines.push(`${bg}  ${muted}[ ] press a to add${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      // Show hint to add task (always visible when not in add mode, always gray)
+      lines.push(`${bg}  ${ansi.gray}[ ] press a to add${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
 
     // Fill remaining space
