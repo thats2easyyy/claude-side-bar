@@ -706,7 +706,7 @@ export class RawSidebar {
     lines.push(`${bg}  ${bold}${text}${queueHeader}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
 
     if (tasks.length === 0 && inputMode !== "add") {
-      lines.push(`${bg}  ${muted}No to-dos${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(`${bg}  ${muted}[ ] press a to add${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
 
     // Track where the input line is for cursor positioning
