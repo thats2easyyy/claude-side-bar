@@ -117,6 +117,8 @@ export class RawSidebar {
   private running = false;
   private pollInterval: ReturnType<typeof setInterval> | null = null;
   private onClose?: () => void;
+  private isPasting = false;
+  private pasteBuffer = "";
 
   constructor(onClose?: () => void) {
     this.width = process.stdout.columns || 50;
@@ -136,6 +138,7 @@ export class RawSidebar {
     process.stdout.write(
       ansi.enterAltScreen + // Enter alternate screen buffer (prevents scrollback pollution)
       '\x1b[?1004h' + // Enable focus reporting
+      '\x1b[?2004h' + // Enable bracketed paste mode
       ansi.hideCursor + ansi.clearScreen + ansi.cursorHome
     );
 
@@ -168,8 +171,8 @@ export class RawSidebar {
 
   stop(): void {
     this.running = false;
-    // Disable focus reporting, restore cursor, and exit alternate screen buffer
-    process.stdout.write('\x1b[?1004l' + ansi.showCursor + ansi.reset + ansi.exitAltScreen);
+    // Disable focus reporting, bracketed paste, restore cursor, and exit alternate screen buffer
+    process.stdout.write('\x1b[?1004l' + '\x1b[?2004l' + ansi.showCursor + ansi.reset + ansi.exitAltScreen);
     process.stdin.setRawMode(false);
     process.stdin.removeListener('data', this.handleInput);
     process.stdout.removeListener('resize', this.handleResize);
@@ -239,8 +242,77 @@ export class RawSidebar {
     this.restartPolling();
   }
 
+  private handlePaste(content: string): void {
+    // Only handle paste in input mode
+    if (this.state.inputMode === "none") {
+      return;
+    }
+
+    if (this.state.inputMode === "add") {
+      // Split by newlines and create multiple tasks (brain dump feature)
+      const lines = content.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+      if (lines.length === 0) return;
+
+      if (lines.length === 1) {
+        // Single line - insert into buffer
+        const { inputBuffer, inputCursor } = this.state;
+        this.state.inputBuffer = inputBuffer.slice(0, inputCursor) + lines[0] + inputBuffer.slice(inputCursor);
+        this.state.inputCursor = inputCursor + lines[0].length;
+        this.redrawInputText();
+      } else {
+        // Multiple lines - create tasks for each
+        lines.forEach(line => addTask(line));
+        this.state.tasks = getTasks();
+        this.exitInputMode();
+      }
+    } else if (this.state.inputMode === "edit") {
+      // In edit mode - insert at cursor
+      const { inputBuffer, inputCursor } = this.state;
+      // Join multiple lines with space for edit mode
+      const text = content.replace(/\r?\n/g, ' ').trim();
+      this.state.inputBuffer = inputBuffer.slice(0, inputCursor) + text + inputBuffer.slice(inputCursor);
+      this.state.inputCursor = inputCursor + text.length;
+      this.redrawInputText();
+    }
+  }
+
   private handleInput = (data: Buffer) => {
     const str = data.toString();
+
+    // Bracketed paste mode detection
+    const pasteStart = '\x1b[200~';
+    const pasteEnd = '\x1b[201~';
+
+    // Check for paste start
+    if (str.includes(pasteStart)) {
+      this.isPasting = true;
+      this.pasteBuffer = "";
+      // Extract content after paste start marker
+      const afterStart = str.split(pasteStart)[1] || "";
+      if (afterStart.includes(pasteEnd)) {
+        // Paste start and end in same chunk
+        const content = afterStart.split(pasteEnd)[0];
+        this.handlePaste(content);
+        this.isPasting = false;
+      } else {
+        this.pasteBuffer = afterStart;
+      }
+      return;
+    }
+
+    // Check for paste end (if we're in paste mode)
+    if (this.isPasting) {
+      if (str.includes(pasteEnd)) {
+        const beforeEnd = str.split(pasteEnd)[0];
+        this.pasteBuffer += beforeEnd;
+        this.handlePaste(this.pasteBuffer);
+        this.isPasting = false;
+        this.pasteBuffer = "";
+      } else {
+        this.pasteBuffer += str;
+      }
+      return;
+    }
 
     // Terminal focus events (sent by terminal when focus-events enabled)
     if (str === '\x1b[I') {
