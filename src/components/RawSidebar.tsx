@@ -694,8 +694,8 @@ export class RawSidebar {
         const padding = ' '.repeat(Math.max(0, maxContentWidth - line.length));
         lines.push(`${bg}  ${prefix} ${text}${line}${padding}${ansi.reset}`);
       });
-    } else {
-      // Show hint to add task (always visible when not in add mode, always gray)
+    } else if (this.focused) {
+      // Show hint to add task (only when focused)
       lines.push(`${bg}  ${ansi.gray}[ ] press a to add${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
 
