@@ -488,23 +488,20 @@ export class RawSidebar {
     if (str === 'i') {
       const task = this.state.tasks[this.state.selectedIndex];
       if (task) {
-        const interviewPrompt = `INTERVIEW MODE: Before working on this task, interview me using AskUserQuestion to gather context.
+        const interviewPrompt = `INTERVIEW MODE
 
 TASK: ${task.content}
 
-Use AskUserQuestion to ask:
-1. Task-specific questions - requirements, constraints, definition of done (1-3 questions based on task complexity)
-2. Context handling - "Should I clear the context window, compact it, keep it, or decide for you?" with options:
-   - Clear context (start fresh)
-   - Compact context (summarize to save tokens)
-   - Keep context (don't change anything)
-   - Decide for me (you judge based on task relevance to recent work)
-3. Atomic Plans - "Should I create an Atomic Plan to track decisions and progress for this work?" with options:
-   - Yes, create a plan
-   - No, just execute
-   - Decide for me (you judge based on task complexity)
+Interview me in depth using AskUserQuestion about this task. Ask about anything relevant: technical implementation, UI/UX, edge cases, concerns, tradeoffs, constraints, dependencies, etc.
 
-After I answer, handle context as specified (run /clear or /compact if needed), create a plan if requested, then execute the task.`;
+Guidelines:
+- Don't ask obvious questions - if something is clear from the task description, don't ask about it
+- Be thorough - keep interviewing until you have complete clarity
+- Always include "Anything else I should know?" as a final question
+- Ask about context handling: clear window / compact / keep / decide for me
+- Ask about Atomic Plans: create a plan / just execute / decide for me
+
+After the interview is complete, write specs to an Atomic Plan, then execute the task.`;
 
         sendToClaudePane(interviewPrompt);
         removeTask(task.id);
