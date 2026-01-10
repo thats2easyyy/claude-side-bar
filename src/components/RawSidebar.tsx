@@ -618,21 +618,20 @@ export class RawSidebar {
     lines.push(bgLine); // Space after header
 
     // Claude's todos section (from TodoWrite hook)
+    // Only show non-completed todos - completed ones are noise
     const { claudeTodos } = this.state;
+    const activeTodos = claudeTodos.filter(t => t.status !== "completed");
     const maxContentWidth = this.width - 8;
 
-    if (claudeTodos.length > 0) {
+    if (activeTodos.length > 0) {
       lines.push(`${bg}  ${bold}${text}Claude${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-      claudeTodos.forEach((todo) => {
-        // Status indicators: ● in_progress, ✓ completed, ○ pending
+      activeTodos.forEach((todo) => {
+        // Status indicators: ● in_progress, ○ pending
         let statusIcon: string;
         let todoColor = text;
         if (todo.status === "in_progress") {
           statusIcon = "●";
           todoColor = ansi.green;
-        } else if (todo.status === "completed") {
-          statusIcon = "✓";
-          todoColor = muted;
         } else {
           statusIcon = "○";
         }
