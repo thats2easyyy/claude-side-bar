@@ -476,6 +476,38 @@ export class RawSidebar {
       return;
     }
 
+    // 'i' - interview mode (send task with interview prompt)
+    if (str === 'i') {
+      const task = this.state.tasks[this.state.selectedIndex];
+      if (task) {
+        const interviewPrompt = `INTERVIEW MODE: Before working on this task, interview me using AskUserQuestion to gather context.
+
+TASK: ${task.content}
+
+Use AskUserQuestion to ask:
+1. Task-specific questions - requirements, constraints, definition of done (1-3 questions based on task complexity)
+2. Context handling - "Should I clear the context window, compact it, keep it, or decide for you?" with options:
+   - Clear context (start fresh)
+   - Compact context (summarize to save tokens)
+   - Keep context (don't change anything)
+   - Decide for me (you judge based on task relevance to recent work)
+3. Atomic Plans - "Should I create an Atomic Plan to track decisions and progress for this work?" with options:
+   - Yes, create a plan
+   - No, just execute
+   - Decide for me (you judge based on task complexity)
+
+After I answer, handle context as specified (run /clear or /compact if needed), create a plan if requested, then execute the task.`;
+
+        sendToClaudePane(interviewPrompt);
+        removeTask(task.id);
+        this.state.tasks = getTasks();
+        this.state.selectedIndex = Math.max(0, this.state.selectedIndex - 1);
+        this.render();
+        focusClaudePane();
+      }
+      return;
+    }
+
     // 'a' - add task
     if (str === 'a') {
       this.pausePolling();
@@ -709,7 +741,7 @@ export class RawSidebar {
     // Footer
     const helpText = inputMode !== "none"
       ? "↵: submit | Esc: cancel"
-      : "a: add | e: edit | d: del | ↵: send";
+      : "a: add | e: edit | d: del | ↵: send | i: interview";
     lines.push(`${bg}  ${muted}${helpText}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     lines.push(bgLine);
 
