@@ -66,6 +66,16 @@ export interface ClaudeConfig {
   mcpServers: string[];
 }
 
+export interface ClaudeTodo {
+  content: string;
+  status: "pending" | "in_progress" | "completed";
+}
+
+export interface ClaudeTodosData {
+  todos: ClaudeTodo[];
+  updatedAt: string;
+}
+
 // Get the data directory path
 export function getDataDir(): string {
   return SIDEBAR_DIR;
@@ -162,6 +172,11 @@ export function getActiveTask(): ActiveTask | null {
 // Statusline data (from Claude Code)
 export function getStatusline(): StatuslineData | null {
   return readJson<StatuslineData | null>("statusline.json", null);
+}
+
+// Claude's todo list (from TodoWrite hook)
+export function getClaudeTodos(): ClaudeTodosData | null {
+  return readJson<ClaudeTodosData | null>("claude-todos.json", null);
 }
 
 // Claude Code config (plugins and MCPs)

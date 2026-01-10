@@ -6,18 +6,16 @@
 import { execSync } from "child_process";
 import {
   getTasks,
-  getActiveTask,
   getStatusline,
+  getClaudeTodos,
   addTask,
   updateTask,
   removeTask,
-  activateTask,
-  completeActiveTask,
   type Task,
-  type ActiveTask,
   type StatuslineData,
+  type ClaudeTodo,
 } from "../persistence/store";
-import { sendToClaudePane as tmuxSendToClaudePane, isClaudeAtPrompt, focusClaudePane as tmuxFocusClaudePane, isInTmux } from "../terminal/tmux";
+import { sendToClaudePane as tmuxSendToClaudePane, focusClaudePane as tmuxFocusClaudePane, isInTmux } from "../terminal/tmux";
 import { sendToClaudePane as itermSendToClaudePane, focusSession, isInITerm } from "../terminal/iterm";
 
 // Unified functions that work with both iTerm2 and tmux
@@ -92,7 +90,7 @@ function wrapText(text: string, maxWidth: number): string[] {
 
 interface State {
   tasks: Task[];
-  active: ActiveTask | null;
+  claudeTodos: ClaudeTodo[];
   statusline: StatuslineData | null;
   selectedIndex: number;
   inputMode: InputMode;
@@ -104,7 +102,7 @@ interface State {
 export class RawSidebar {
   private state: State = {
     tasks: [],
-    active: null,
+    claudeTodos: [],
     statusline: null,
     selectedIndex: 0,
     inputMode: "none",
@@ -118,8 +116,6 @@ export class RawSidebar {
   private focused = true;
   private running = false;
   private pollInterval: ReturnType<typeof setInterval> | null = null;
-  private completionInterval: ReturnType<typeof setInterval> | null = null;
-  private stableCount = 0;
   private onClose?: () => void;
 
   constructor(onClose?: () => void) {
@@ -186,53 +182,20 @@ export class RawSidebar {
     if (this.pollInterval) {
       clearInterval(this.pollInterval);
     }
-    if (this.completionInterval) {
-      clearInterval(this.completionInterval);
-    }
   }
 
   private loadData(): void {
     const newTasks = getTasks();
-    const newActive = getActiveTask();
+    const newClaudeTodos = getClaudeTodos()?.todos || [];
     const newStatusline = getStatusline();
     const tasksChanged = JSON.stringify(newTasks) !== JSON.stringify(this.state.tasks);
-    const activeChanged = JSON.stringify(newActive) !== JSON.stringify(this.state.active);
+    const claudeTodosChanged = JSON.stringify(newClaudeTodos) !== JSON.stringify(this.state.claudeTodos);
     const statuslineChanged = JSON.stringify(newStatusline) !== JSON.stringify(this.state.statusline);
 
-    if (tasksChanged || activeChanged || statuslineChanged) {
+    if (tasksChanged || claudeTodosChanged || statuslineChanged) {
       this.state.tasks = newTasks;
-      this.state.active = newActive;
+      this.state.claudeTodos = newClaudeTodos;
       this.state.statusline = newStatusline;
-
-      // Start/stop completion polling
-      if (newActive && !this.completionInterval) {
-        // Only enable auto-completion polling in tmux mode
-        // In iTerm2 mode, we can't check the other pane's output
-        if (isInTmux()) {
-          this.completionInterval = setInterval(async () => {
-            // Skip completion checking during input mode
-            if (this.state.inputMode !== "none") return;
-
-            const atPrompt = await isClaudeAtPrompt();
-            if (atPrompt) {
-              this.stableCount++;
-              if (this.stableCount >= 2) {
-                completeActiveTask();
-                this.state.active = null;
-                this.stableCount = 0;
-                this.render();
-              }
-            } else {
-              this.stableCount = 0;
-            }
-          }, 2000);
-        }
-      } else if (!newActive && this.completionInterval) {
-        clearInterval(this.completionInterval);
-        this.completionInterval = null;
-        this.stableCount = 0;
-      }
-
       this.render();
     }
   }
@@ -475,21 +438,13 @@ export class RawSidebar {
       if (this.state.selectedIndex > 0) {
         this.state.selectedIndex--;
         this.render();
-      } else if (this.state.selectedIndex === 0 && this.state.active) {
-        // Move to active task (index -1)
-        this.state.selectedIndex = -1;
-        this.render();
       }
       return;
     }
 
     // Down arrow or j
     if (str === '\x1b[B' || str === '\x1bOB' || str === 'j') {
-      if (this.state.selectedIndex === -1) {
-        // Move from active to first queue item
-        this.state.selectedIndex = 0;
-        this.render();
-      } else if (this.state.selectedIndex < this.state.tasks.length - 1) {
+      if (this.state.selectedIndex < this.state.tasks.length - 1) {
         this.state.selectedIndex++;
         this.render();
       }
@@ -510,19 +465,13 @@ export class RawSidebar {
     if (str === '\r' || str === '\n') {
       const task = this.state.tasks[this.state.selectedIndex];
       if (task) {
-        // Clear any existing active task first
-        if (this.state.active) {
-          completeActiveTask();
-          this.state.active = null;
-        }
-        const activated = activateTask(task.id);
-        if (activated) {
-          this.state.active = activated;
-          this.state.tasks = getTasks();
-          sendToClaudePane(task.content);
-          this.render();
-          focusClaudePane();
-        }
+        // Send to Claude and remove from queue
+        sendToClaudePane(task.content);
+        removeTask(task.id);
+        this.state.tasks = getTasks();
+        this.state.selectedIndex = Math.max(0, this.state.selectedIndex - 1);
+        this.render();
+        focusClaudePane();
       }
       return;
     }
@@ -556,22 +505,14 @@ export class RawSidebar {
       return;
     }
 
-    // 'd' - delete task or clear active
+    // 'd' - delete task
     if (str === 'd') {
-      if (this.state.selectedIndex === -1 && this.state.active) {
-        // Clear active task
-        completeActiveTask();
-        this.state.active = null;
-        this.state.selectedIndex = 0;
+      const task = this.state.tasks[this.state.selectedIndex];
+      if (task) {
+        removeTask(task.id);
+        this.state.tasks = getTasks();
+        this.state.selectedIndex = Math.max(0, this.state.selectedIndex - 1);
         this.render();
-      } else {
-        const task = this.state.tasks[this.state.selectedIndex];
-        if (task) {
-          removeTask(task.id);
-          this.state.tasks = getTasks();
-          this.state.selectedIndex = Math.max(0, this.state.selectedIndex - 1);
-          this.render();
-        }
       }
       return;
     }
@@ -640,7 +581,7 @@ export class RawSidebar {
     if (!this.running) return;
 
     const lines: string[] = [];
-    const { tasks, active, selectedIndex, inputMode, editingTaskId, inputBuffer, inputCursor } = this.state;
+    const { tasks, selectedIndex, inputMode, editingTaskId, inputBuffer, inputCursor } = this.state;
 
     // Use dimmed colors when unfocused
     const bg = this.focused ? ansi.bgGray : ansi.dimBg;
@@ -676,26 +617,31 @@ export class RawSidebar {
     lines.push(`${bg}  ${text}${headerContent}${ansi.clearToEnd}${ansi.reset}`);
     lines.push(bgLine); // Space after header
 
-    // Active section
-    lines.push(`${bg}  ${bold}${text}Active${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-    if (active) {
-      const isActiveSelected = selectedIndex === -1;
-      const maxContentWidth = this.width - 8;
+    // Claude's todos section (from TodoWrite hook)
+    const { claudeTodos } = this.state;
+    const maxContentWidth = this.width - 8;
 
-      if (isActiveSelected && this.focused && active.content.length > maxContentWidth) {
-        // Wrap text when selected (only when focused)
-        const wrappedLines = wrapText(active.content, maxContentWidth);
-        wrappedLines.forEach((line, i) => {
-          const prefix = i === 0 ? '[•]' : '   ';
-          lines.push(`${bg}  ${text}${prefix} ${line}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-        });
-      } else {
-        const activeContent = active.content.slice(0, maxContentWidth);
-        const prefix = (isActiveSelected && this.focused) ? '[•]' : '→';
-        lines.push(`${bg}  ${text}${prefix} ${activeContent}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-      }
+    if (claudeTodos.length > 0) {
+      lines.push(`${bg}  ${bold}${text}Claude${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      claudeTodos.forEach((todo) => {
+        // Status indicators: ● in_progress, ✓ completed, ○ pending
+        let statusIcon: string;
+        let todoColor = text;
+        if (todo.status === "in_progress") {
+          statusIcon = "●";
+          todoColor = ansi.green;
+        } else if (todo.status === "completed") {
+          statusIcon = "✓";
+          todoColor = muted;
+        } else {
+          statusIcon = "○";
+        }
+        const content = todo.content.slice(0, maxContentWidth - 2);
+        lines.push(`${bg}  ${todoColor}${statusIcon} ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      });
     } else {
-      lines.push(`${bg}  ${muted}No active task${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(`${bg}  ${bold}${text}Claude${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(`${bg}  ${muted}No active tasks${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
 
     // Margin
@@ -707,7 +653,6 @@ export class RawSidebar {
 
     // Track where the input line is for cursor positioning
     let inputLineRow = 0;
-    const maxContentWidth = this.width - 8;
 
     // Queue items
     tasks.forEach((task, index) => {
