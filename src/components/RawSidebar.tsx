@@ -7,6 +7,7 @@ import { execSync } from "child_process";
 import {
   getTasks,
   getActiveTask,
+  getStatusline,
   addTask,
   updateTask,
   removeTask,
@@ -14,6 +15,7 @@ import {
   completeActiveTask,
   type Task,
   type ActiveTask,
+  type StatuslineData,
 } from "../persistence/store";
 import { sendToClaudePane as tmuxSendToClaudePane, isClaudeAtPrompt, focusClaudePane as tmuxFocusClaudePane, isInTmux } from "../terminal/tmux";
 import { sendToClaudePane as itermSendToClaudePane, focusSession, isInITerm } from "../terminal/iterm";
@@ -68,6 +70,10 @@ const ansi = {
   // Dimmed colors for unfocused state
   dimBg: `${CSI}48;2;245;245;245m`, // #f5f5f5 - unfocused
   dimText: `${CSI}30m`, // Same black text (unfocused)
+  // Context warning colors
+  yellow: `${CSI}33m`, // Warning (60-80%)
+  red: `${CSI}31m`, // Critical (>80%)
+  green: `${CSI}32m`, // Good (<60%)
 };
 
 type InputMode = "none" | "add" | "edit";
@@ -87,6 +93,7 @@ function wrapText(text: string, maxWidth: number): string[] {
 interface State {
   tasks: Task[];
   active: ActiveTask | null;
+  statusline: StatuslineData | null;
   selectedIndex: number;
   inputMode: InputMode;
   editingTaskId: string | null;
@@ -98,6 +105,7 @@ export class RawSidebar {
   private state: State = {
     tasks: [],
     active: null,
+    statusline: null,
     selectedIndex: 0,
     inputMode: "none",
     editingTaskId: null,
@@ -186,12 +194,15 @@ export class RawSidebar {
   private loadData(): void {
     const newTasks = getTasks();
     const newActive = getActiveTask();
+    const newStatusline = getStatusline();
     const tasksChanged = JSON.stringify(newTasks) !== JSON.stringify(this.state.tasks);
     const activeChanged = JSON.stringify(newActive) !== JSON.stringify(this.state.active);
+    const statuslineChanged = JSON.stringify(newStatusline) !== JSON.stringify(this.state.statusline);
 
-    if (tasksChanged || activeChanged) {
+    if (tasksChanged || activeChanged || statuslineChanged) {
       this.state.tasks = newTasks;
       this.state.active = newActive;
+      this.state.statusline = newStatusline;
 
       // Start/stop completion polling
       if (newActive && !this.completionInterval) {
@@ -724,7 +735,8 @@ export class RawSidebar {
 
     // Fill remaining space
     const contentHeight = lines.length;
-    const footerHeight = 4;
+    const { statusline } = this.state;
+    const footerHeight = statusline ? 5 : 4;
     const remainingHeight = this.height - contentHeight - footerHeight;
     for (let i = 0; i < remainingHeight; i++) {
       lines.push(bgLine);
@@ -736,19 +748,38 @@ export class RawSidebar {
       : "a: add | e: edit | d: del | ↵: send";
     lines.push(`${bg}  ${muted}${helpText}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     lines.push(bgLine);
-    const cwd = process.cwd();
-    const parts = cwd.split('/').filter(Boolean);
-    const shortPath = parts.length >= 2 ? parts.slice(-2).join('/') : parts[parts.length - 1] || cwd;
 
-    // Get git branch
-    let branch = '';
-    try {
-      branch = execSync('git rev-parse --abbrev-ref HEAD 2>/dev/null', { encoding: 'utf8' }).trim();
-    } catch {}
+    // Statusline info (if available from Claude Code)
+    if (statusline) {
+      // Color-code context based on usage level
+      const ctxPercent = statusline.contextPercent;
+      const ctxColor = ctxPercent >= 80 ? ansi.red : ctxPercent >= 60 ? ansi.yellow : ansi.green;
+      const ctxDisplay = `${ctxColor}${ctxPercent}% ctx${ansi.reset}${bg}`;
+      const costDisplay = `$${statusline.costUsd.toFixed(2)}`;
+      const durationDisplay = `${statusline.durationMin}m`;
+      const statusInfo = `${ctxDisplay}  ${text}${costDisplay}  ${durationDisplay}`;
+      lines.push(`${bg}  ${statusInfo}${ansi.clearToEnd}${ansi.reset}`);
+    }
 
-    const folderDisplay = `📁 ${shortPath}`;
-    const branchDisplay = branch ? ` 🌱 ${branch}` : '';
-    const footerContent = folderDisplay + branchDisplay;
+    // Branch and repo (from statusline if available, else fallback)
+    let branch = statusline?.branch || '';
+    let repo = statusline?.repo || '';
+    if (!branch) {
+      try {
+        branch = execSync('git rev-parse --abbrev-ref HEAD 2>/dev/null', { encoding: 'utf8' }).trim();
+      } catch {}
+    }
+    if (!repo) {
+      const cwd = process.cwd();
+      const parts = cwd.split('/').filter(Boolean);
+      repo = parts[parts.length - 1] || cwd;
+    }
+
+    const branchDisplay = branch ? `${branch}` : '';
+    const repoDisplay = repo ? `${repo}` : '';
+    const footerContent = branchDisplay && repoDisplay
+      ? `${branchDisplay}  ${repoDisplay}`
+      : branchDisplay || repoDisplay;
     lines.push(`${bg}  ${text}${footerContent}${ansi.clearToEnd}${ansi.reset}`);
     lines.push(bgLine); // Bottom padding
 

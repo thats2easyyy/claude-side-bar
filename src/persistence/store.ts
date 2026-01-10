@@ -21,6 +21,18 @@ export interface ActiveTask {
   sentAt: string;
 }
 
+export interface StatuslineData {
+  contextPercent: number;
+  contextTokens: number;
+  contextSize: number;
+  costUsd: number;
+  durationMin: number;
+  model: string;
+  branch: string;
+  repo: string;
+  updatedAt: string;
+}
+
 // Get the data directory path
 export function getDataDir(): string {
   return SIDEBAR_DIR;
@@ -90,6 +102,11 @@ export function removeTask(id: string): void {
 // Active task (currently being worked on by Claude)
 export function getActiveTask(): ActiveTask | null {
   return readJson<ActiveTask | null>("active.json", null);
+}
+
+// Statusline data (from Claude Code)
+export function getStatusline(): StatuslineData | null {
+  return readJson<StatuslineData | null>("statusline.json", null);
 }
 
 export function setActiveTask(task: Task | null): void {
