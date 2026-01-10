@@ -736,7 +736,7 @@ export class RawSidebar {
     // Fill remaining space
     const contentHeight = lines.length;
     const { statusline } = this.state;
-    const footerHeight = statusline ? 5 : 4;
+    const footerHeight = statusline ? 6 : 4;
     const remainingHeight = this.height - contentHeight - footerHeight;
     for (let i = 0; i < remainingHeight; i++) {
       lines.push(bgLine);
@@ -754,11 +754,19 @@ export class RawSidebar {
       // Color-code context based on usage level
       const ctxPercent = statusline.contextPercent;
       const ctxColor = ctxPercent >= 80 ? ansi.red : ctxPercent >= 60 ? ansi.yellow : ansi.green;
-      const ctxDisplay = `${ctxColor}${ctxPercent}% ctx${ansi.reset}${bg}`;
+
+      // Visual progress bar (10 chars wide)
+      const barWidth = 10;
+      const filledCount = Math.round((ctxPercent / 100) * barWidth);
+      const emptyCount = barWidth - filledCount;
+      const progressBar = '█'.repeat(filledCount) + '░'.repeat(emptyCount);
+
+      const ctxDisplay = `${ctxColor}${progressBar}${ansi.reset}${bg} ${text}${ctxPercent}%`;
       const costDisplay = `$${statusline.costUsd.toFixed(2)}`;
       const durationDisplay = `${statusline.durationMin}m`;
-      const statusInfo = `${ctxDisplay}  ${text}${costDisplay}  ${durationDisplay}`;
+      const statusInfo = `${ctxDisplay}  ${costDisplay}  ${durationDisplay}`;
       lines.push(`${bg}  ${statusInfo}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(bgLine); // Space before branch/repo
     }
 
     // Branch and repo (from statusline if available, else fallback)
