@@ -786,8 +786,8 @@ export class RawSidebar {
     const branchDisplay = branch ? `${branch}` : '';
     const repoDisplay = repo ? `${repo}` : '';
     const footerContent = branchDisplay && repoDisplay
-      ? `${branchDisplay} · ${repoDisplay}`
-      : branchDisplay || repoDisplay;
+      ? `${repoDisplay} · ${branchDisplay}`
+      : repoDisplay || branchDisplay;
     lines.push(`${bg}  ${text}${footerContent}${ansi.clearToEnd}${ansi.reset}`);
     lines.push(bgLine); // Bottom padding
 
