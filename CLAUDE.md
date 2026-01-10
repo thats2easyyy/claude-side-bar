@@ -2,16 +2,34 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project Planning
+
+Use the `atomic-plans` skill for all planning work:
+
+```
+/atomic-plans /Users/tyler/Desktop/notes/Projects/Claude Code Sidebar
+```
+
+**When to use:**
+- Starting new work → Read `_index.md` first, then create a new plan
+- Resuming work → Read existing plans to understand context
+- Fixing mistakes or adding missing info → Edit existing plan files
+
+**Plan location:** `/Users/tyler/Desktop/notes/Projects/Claude Code Sidebar/`
+
 ## Project Overview
 
-Claude Sidebar is a Claude Code plugin that provides a visual sidebar panel for managing a task queue. It runs in a tmux split pane alongside Claude Code.
+Claude Sidebar is a visual sidebar panel for managing a task queue alongside Claude Code. Supports two backends:
+- **iTerm2** (preferred) - Uses AppleScript, preserves scrollback
+- **tmux** - Uses tmux splits, has scrollback limitations
 
 ## Commands
 
 ```bash
-bun run src/cli.ts show     # Render sidebar in current terminal
-bun run src/cli.ts spawn    # Launch in tmux split pane (must be in tmux)
-bun run src/cli.ts env      # Show environment info (tmux status, socket path)
+bun run src/cli.ts show       # Render sidebar in current terminal
+bun run src/cli.ts spawn      # Launch in split pane (auto-detects iTerm2 vs tmux)
+bun run src/cli.ts spawn --tmux  # Force tmux mode
+bun run src/cli.ts env        # Show environment info
 ```
 
 ## Architecture
