@@ -11,6 +11,7 @@ import {
   addTask,
   updateTask,
   removeTask,
+  markTaskClarified,
   getActiveTask,
   setActiveTask,
   activateTask,
@@ -140,6 +141,16 @@ export class RawSidebar {
   private onClose?: () => void;
   private isPasting = false;
   private pasteBuffer = "";
+
+  // Get tasks sorted by priority (focus → backlog → uncategorized)
+  // This must match the order used in render()
+  private getSortedTasks(): Task[] {
+    const { tasks } = this.state;
+    const focusTasks = tasks.filter(t => t.priority === "focus");
+    const backlogTasks = tasks.filter(t => t.priority === "backlog");
+    const uncategorizedTasks = tasks.filter(t => !t.priority);
+    return [...focusTasks, ...backlogTasks, ...uncategorizedTasks];
+  }
 
   constructor(onClose?: () => void) {
     this.width = process.stdout.columns || 50;
@@ -640,7 +651,8 @@ export class RawSidebar {
     // Number keys 1-9 (select queue item, switches to queue section)
     if (/^[1-9]$/.test(str)) {
       const index = parseInt(str, 10) - 1;
-      if (index < this.state.tasks.length) {
+      const sortedTasks = this.getSortedTasks();
+      if (index < sortedTasks.length) {
         this.state.selectedSection = "queue";
         this.state.selectedIndex = index;
         this.render();
@@ -651,7 +663,8 @@ export class RawSidebar {
     // Enter - send task to Claude (only works in queue section)
     if (str === '\r' || str === '\n') {
       if (this.state.selectedSection !== "queue") return;
-      const task = this.state.tasks[this.state.selectedIndex];
+      const sortedTasks = this.getSortedTasks();
+      const task = sortedTasks[this.state.selectedIndex];
       if (task) {
         // Send to Claude and move to active
         sendToClaudePane(task.content);
@@ -668,7 +681,8 @@ export class RawSidebar {
     // CSI u format: \x1b[13;5u (iTerm2), 'c' as fallback
     if (str === '\x1b[13;5u' || str === '\x1b\r' || str === '\x1b\n' || str === 'c') {
       if (this.state.selectedSection !== "queue") return;
-      const task = this.state.tasks[this.state.selectedIndex];
+      const sortedTasks = this.getSortedTasks();
+      const task = sortedTasks[this.state.selectedIndex];
       if (task) {
         const clarifyPrompt = `CLARIFY MODE
 
@@ -686,6 +700,7 @@ Guidelines:
 After clarification is complete, write specs to an Atomic Plan, then execute the task.`;
 
         sendToClaudePane(clarifyPrompt);
+        markTaskClarified(task.id);
         activateTask(task.id);
         this.loadData();
         this.state.selectedIndex = Math.max(0, this.state.selectedIndex - 1);
@@ -711,7 +726,8 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
     // 'e' - edit task (only works in queue section)
     if (str === 'e') {
       if (this.state.selectedSection !== "queue") return;
-      const task = this.state.tasks[this.state.selectedIndex];
+      const sortedTasks = this.getSortedTasks();
+      const task = sortedTasks[this.state.selectedIndex];
       if (task) {
         this.pausePolling();
         this.state.inputMode = "edit";
@@ -729,7 +745,8 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
     // 'd' - delete from queue, or confirm done in Review section
     if (str === 'd') {
       if (this.state.selectedSection === "queue") {
-        const task = this.state.tasks[this.state.selectedIndex];
+        const sortedTasks = this.getSortedTasks();
+        const task = sortedTasks[this.state.selectedIndex];
         if (task) {
           removeTask(task.id);
           this.state.tasks = getTasks();
@@ -796,7 +813,7 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
 
   private getCursorPosition(): string {
     const { inputCursor } = this.state;
-    const maxWidth = this.width - 8;
+    const maxWidth = this.width - 8; // Account for "  [ ] " prefix (6 chars) + padding
 
     // Calculate which visual line the cursor is on and column within that line
     const visualLine = Math.floor(inputCursor / maxWidth);
@@ -804,7 +821,7 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
 
     // Position cursor (this.inputRow is set during render)
     const cursorRow = this.inputRow + visualLine;
-    const cursorCol = 7 + col;
+    const cursorCol = 7 + col; // 2 indent + 4 bracket = 6, plus 1 for 1-indexed
     return ansi.cursorTo(cursorRow, cursorCol);
   }
 
@@ -825,10 +842,10 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
     // Redraw all wrapped lines
     let output = ansi.beginSync;
     wrappedLines.forEach((line, i) => {
-      const prefix = i === 0 ? '[ ]' : '   ';
+      const prefix = i === 0 ? '[ ] ' : '    ';
       const padding = ' '.repeat(Math.max(0, maxWidth - line.length));
       output += ansi.cursorTo(this.inputRow + i, 1) +
-        `${ansi.bgGray}  ${prefix} ${ansi.black}${line}${padding}  ${ansi.reset}`;
+        `${ansi.bgGray}  ${prefix}${ansi.black}${line}${padding}  ${ansi.reset}`;
     });
 
     // Clear any leftover lines from previous longer text
@@ -886,34 +903,33 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
     const { claudeTodos } = this.state;
     const { activeTask, doneTasks } = this.state;
     const activeTodos = claudeTodos.filter(t => t.status !== "completed");
+    // Content width: total width - 2 (margin) - 4 (indicator like "[ ] ") - 2 (right padding)
     const maxContentWidth = this.width - 8;
 
-    // Show In Progress section if there's an active task OR in-progress todos
-    if (activeTask || activeTodos.length > 0) {
-      lines.push(`${bg}  ${bold}${text}In Progress${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+    // Always show In Progress section
+    lines.push(`${bg}  ${bold}${text}In Progress${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
 
-      // Show sidebar active task first (sent from queue)
-      if (activeTask) {
-        const content = activeTask.content.slice(0, maxContentWidth - 2);
-        lines.push(`${bg}  ${ansi.green}▶ ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-      }
-
-      // Show Claude's TodoWrite items (what Claude is tracking)
-      activeTodos.forEach((todo) => {
-        let statusIcon: string;
-        let todoColor = text;
-        if (todo.status === "in_progress") {
-          statusIcon = "●";
-          todoColor = ansi.green;
-        } else {
-          statusIcon = "○";
-        }
-        const content = todo.content.slice(0, maxContentWidth - 2);
-        lines.push(`${bg}  ${todoColor}${statusIcon} ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-      });
-
-      lines.push(bgLine);
+    // Show sidebar active task first (sent from queue)
+    if (activeTask) {
+      const content = activeTask.content.slice(0, maxContentWidth);
+      lines.push(`${bg}  ${ansi.green}▸   ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
+
+    // Show Claude's TodoWrite items (what Claude is tracking)
+    activeTodos.forEach((todo) => {
+      let statusIcon: string;
+      let todoColor = text;
+      if (todo.status === "in_progress") {
+        statusIcon = "●   ";
+        todoColor = ansi.green;
+      } else {
+        statusIcon = "○   ";
+      }
+      const content = todo.content.slice(0, maxContentWidth);
+      lines.push(`${bg}  ${todoColor}${statusIcon}${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+    });
+
+    lines.push(bgLine);
 
     // Review section (tasks Claude thinks are done, awaiting user confirmation)
     const { selectedSection, doneSelectedIndex } = this.state;
@@ -921,49 +937,85 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
       lines.push(`${bg}  ${bold}${text}Review${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       doneTasks.slice(0, 5).forEach((task, index) => {
         const isSelected = selectedSection === "done" && index === doneSelectedIndex && this.focused;
-        const content = task.content.slice(0, maxContentWidth - 2);
-        const icon = isSelected ? "[?]" : " ? ";
+        const content = task.content.slice(0, maxContentWidth);
+        const icon = isSelected ? "[?] " : " ?  ";
         const color = isSelected ? text : muted;
-        lines.push(`${bg}  ${color}${icon} ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+        lines.push(`${bg}  ${color}${icon}${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       });
       lines.push(bgLine);
     }
 
-    // To-dos section
-    const queueHeader = `To-dos${tasks.length > 0 ? ` (${tasks.length})` : ''}`;
-    lines.push(`${bg}  ${bold}${text}${queueHeader}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+    // To-dos section - split into Focus and Backlog with clarified indicators
+    // Sort tasks: focus first, then backlog, then uncategorized
+    const focusTasks = tasks.filter(t => t.priority === "focus");
+    const backlogTasks = tasks.filter(t => t.priority === "backlog");
+    const uncategorizedTasks = tasks.filter(t => !t.priority);
+
+    // Combined sorted list for navigation (focus, backlog, uncategorized)
+    const sortedTasks = [...focusTasks, ...backlogTasks, ...uncategorizedTasks];
 
     // Track where the input line is for cursor positioning
     let inputLineRow = 0;
+    let taskIndex = 0;
 
-    // Queue items
-    tasks.forEach((task, index) => {
+    // Helper to render a task
+    // Design: [ ] for unselected, [>] for selected
+    // Clarified: black text, Unclarified: gray text
+    // Alignment: 2 space indent + 4 char indicator ([ ] or [>]) + text
+    const renderTask = (task: Task, index: number) => {
       const isSelected = selectedSection === "queue" && index === selectedIndex;
       const isEditing = inputMode === "edit" && editingTaskId === task.id;
+      const bracket = (isSelected && this.focused) ? "[>] " : "[ ] ";
+      const color = task.clarified ? text : muted;
 
       if (isEditing) {
-        inputLineRow = lines.length + 1; // 1-indexed row number
-        this.inputRow = inputLineRow; // Store for cursor positioning
+        inputLineRow = lines.length + 1;
+        this.inputRow = inputLineRow;
         const wrappedLines = wrapText(inputBuffer, maxContentWidth);
         if (wrappedLines.length === 0) wrappedLines.push('');
         wrappedLines.forEach((line, i) => {
-          const prefix = i === 0 ? '[ ]' : '   ';
+          const prefix = i === 0 ? bracket : "    "; // 4 spaces to align with text
           const padding = ' '.repeat(Math.max(0, maxContentWidth - line.length));
-          lines.push(`${bg}  ${prefix} ${text}${line}${padding}${ansi.reset}`);
+          lines.push(`${bg}  ${prefix}${text}${line}${padding}${ansi.reset}`);
         });
       } else if (isSelected && this.focused && task.content.length > maxContentWidth) {
-        // Wrap text when selected (only when focused)
         const wrappedLines = wrapText(task.content, maxContentWidth);
         wrappedLines.forEach((line, i) => {
-          const checkbox = i === 0 ? '[•]' : '   ';
-          lines.push(`${bg}  ${text}${checkbox} ${line}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+          const prefix = i === 0 ? bracket : "    ";
+          lines.push(`${bg}  ${color}${prefix}${line}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
         });
       } else {
-        const checkbox = (isSelected && this.focused) ? '[•]' : '[ ]';
         const content = task.content.slice(0, maxContentWidth);
-        lines.push(`${bg}  ${text}${checkbox} ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+        lines.push(`${bg}  ${color}${bracket}${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       }
-    });
+    };
+
+    // Render Focus section
+    if (focusTasks.length > 0) {
+      lines.push(`${bg}  ${bold}${text}Focus (${focusTasks.length})${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      focusTasks.forEach((task) => {
+        renderTask(task, taskIndex++);
+      });
+    }
+
+    // Render Backlog section
+    if (backlogTasks.length > 0) {
+      lines.push(`${bg}  ${bold}${text}Backlog (${backlogTasks.length})${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      backlogTasks.forEach((task) => {
+        renderTask(task, taskIndex++);
+      });
+    }
+
+    // Render uncategorized (To-dos) section
+    if (uncategorizedTasks.length > 0 || (focusTasks.length === 0 && backlogTasks.length === 0)) {
+      const header = focusTasks.length > 0 || backlogTasks.length > 0
+        ? `Uncategorized (${uncategorizedTasks.length})`
+        : `To-dos${uncategorizedTasks.length > 0 ? ` (${uncategorizedTasks.length})` : ''}`;
+      lines.push(`${bg}  ${bold}${text}${header}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      uncategorizedTasks.forEach((task) => {
+        renderTask(task, taskIndex++);
+      });
+    }
 
     // Add new task input
     if (inputMode === "add") {
@@ -972,9 +1024,9 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
       const wrappedLines = wrapText(inputBuffer, maxContentWidth);
       if (wrappedLines.length === 0) wrappedLines.push('');
       wrappedLines.forEach((line, i) => {
-        const prefix = i === 0 ? '[ ]' : '   ';
+        const prefix = i === 0 ? '[ ] ' : '    ';
         const padding = ' '.repeat(Math.max(0, maxContentWidth - line.length));
-        lines.push(`${bg}  ${prefix} ${text}${line}${padding}${ansi.reset}`);
+        lines.push(`${bg}  ${prefix}${text}${line}${padding}${ansi.reset}`);
       });
     } else if (this.focused) {
       // Show hint to add task (only when focused)

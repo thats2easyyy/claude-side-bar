@@ -41,6 +41,8 @@ export interface Task {
   id: string;
   content: string;
   createdAt: string;
+  clarified?: boolean;              // Was this task clarified via interview/brain-dump?
+  priority?: "focus" | "backlog";   // Section assignment
 }
 
 export interface ActiveTask {
@@ -144,12 +146,17 @@ export function setTasks(tasks: Task[]): void {
   writeProjectJson("tasks.json", tasks);
 }
 
-export function addTask(content: string): Task {
+export function addTask(
+  content: string,
+  options?: { clarified?: boolean; priority?: "focus" | "backlog" }
+): Task {
   const tasks = getTasks();
   const task: Task = {
     id: crypto.randomUUID(),
     content,
     createdAt: new Date().toISOString(),
+    clarified: options?.clarified,
+    priority: options?.priority,
   };
   tasks.push(task);
   setTasks(tasks);
@@ -161,6 +168,15 @@ export function updateTask(id: string, content: string): void {
   const task = tasks.find((t) => t.id === id);
   if (task) {
     task.content = content;
+    setTasks(tasks);
+  }
+}
+
+export function markTaskClarified(id: string): void {
+  const tasks = getTasks();
+  const task = tasks.find((t) => t.id === id);
+  if (task) {
+    task.clarified = true;
     setTasks(tasks);
   }
 }
