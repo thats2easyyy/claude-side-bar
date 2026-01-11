@@ -858,17 +858,24 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
     lines.push(`${bg}  ${text}${headerContent}${ansi.clearToEnd}${ansi.reset}`);
     lines.push(bgLine); // Space after header
 
-    // Claude's todos section (from TodoWrite hook)
-    // Only show non-completed todos - completed ones are noise
+    // Active section - combines sidebar active task + Claude's TodoWrite items
     const { claudeTodos } = this.state;
+    const { activeTask, doneTasks } = this.state;
     const activeTodos = claudeTodos.filter(t => t.status !== "completed");
     const maxContentWidth = this.width - 8;
 
-    // Only show Claude section if there are active todos
-    if (activeTodos.length > 0) {
-      lines.push(`${bg}  ${bold}${text}Claude${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+    // Show Active section if there's an active task OR in-progress todos
+    if (activeTask || activeTodos.length > 0) {
+      lines.push(`${bg}  ${bold}${text}Active${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+
+      // Show sidebar active task first (sent from queue)
+      if (activeTask) {
+        const content = activeTask.content.slice(0, maxContentWidth - 2);
+        lines.push(`${bg}  ${ansi.green}▶ ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      }
+
+      // Show Claude's TodoWrite items (what Claude is tracking)
       activeTodos.forEach((todo) => {
-        // Status indicators: ● in_progress, ○ pending
         let statusIcon: string;
         let todoColor = text;
         if (todo.status === "in_progress") {
@@ -880,15 +887,7 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
         const content = todo.content.slice(0, maxContentWidth - 2);
         lines.push(`${bg}  ${todoColor}${statusIcon} ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       });
-      lines.push(bgLine); // Margin after Claude section
-    }
 
-    // Active task section (task currently being worked on)
-    const { activeTask, doneTasks } = this.state;
-    if (activeTask) {
-      lines.push(`${bg}  ${bold}${text}Active${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-      const content = activeTask.content.slice(0, maxContentWidth - 2);
-      lines.push(`${bg}  ${ansi.green}▶ ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       lines.push(bgLine);
     }
 
