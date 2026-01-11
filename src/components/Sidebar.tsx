@@ -16,8 +16,13 @@ import { sendToClaudePane, isClaudeAtPrompt } from "../terminal/tmux";
 // Parse a raw keypress buffer into key info (simplified version)
 function parseRawKey(data: Buffer): { input: string; key: any } {
   const str = data.toString();
+
+  // In iTerm2: Enter sends \r (0x0d), Shift+Enter sends \n (0x0a)
+  const isShiftEnter = str === '\n';
+
   const key = {
-    return: str === '\r' || str === '\n',
+    return: str === '\r',
+    shiftReturn: isShiftEnter,
     escape: str === '\x1b',
     backspace: str === '\x7f' || str === '\b',
     delete: str === '\x1b[3~',
@@ -28,7 +33,7 @@ function parseRawKey(data: Buffer): { input: string; key: any } {
     ctrl: str.charCodeAt(0) < 32 && str !== '\r' && str !== '\n' && str !== '\x1b',
     meta: str.startsWith('\x1b') && str.length > 1 && !str.startsWith('\x1b[') && !str.startsWith('\x1bO'),
     tab: str === '\t',
-    shift: false,
+    shift: isShiftEnter,
   };
 
   let input = str;
@@ -147,7 +152,7 @@ const Footer = memo(function Footer({ inputMode, active }: { inputMode: InputMod
     <Box flexDirection="column" flexShrink={0}>
       <Text color="gray">
         {inputMode !== "none"
-          ? "Enter: submit | Esc: cancel"
+          ? "Enter: submit | Shift+Enter: newline | Esc: cancel"
           : active
           ? "Tab: section | d: clear active"
           : "Tab: section | a: add | e: edit | d: del | Enter: send"}
@@ -302,6 +307,12 @@ export function Sidebar({ onClose }: SidebarProps) {
       const { input, key } = parseRawKey(data);
       const buffer = inputBufferRef.current;
       const cursor = inputCursorRef.current;
+
+      // Shift+Enter: insert newline
+      if (key.shiftReturn) {
+        updateInput(buffer.slice(0, cursor) + '\n' + buffer.slice(cursor), cursor + 1);
+        return;
+      }
 
       if (key.return) {
         // Restore Ink's listeners BEFORE changing state

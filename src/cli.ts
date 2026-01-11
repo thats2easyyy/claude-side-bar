@@ -22,7 +22,7 @@ import { RawSidebar } from "./components/RawSidebar";
 // process.stdout.write("\x1b]0;claude-sidebar\x07");
 
 program
-  .name("claude-sidebar")
+  .name("cc-sidebar")
   .description("Visual sidebar for Claude Code")
   .version("0.1.0");
 

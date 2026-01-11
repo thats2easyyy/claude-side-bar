@@ -2,59 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Planning
-
-Use the `atomic-plans` skill for all planning work:
-
-```
-/atomic-plans /Users/tyler/Desktop/notes/Projects/Claude Code Sidebar
-```
-
-**When to use:**
-- Starting new work → Read `_index.md` first, then create a new plan
-- Resuming work → Read existing plans to understand context
-- Fixing mistakes or adding missing info → Edit existing plan files
-
-**Plan location:** `/Users/tyler/Desktop/notes/Projects/Claude Code Sidebar/`
-
-## TodoWrite Usage (Critical)
-
-**Always use TodoWrite for ALL work** - not just "big" tasks. This ensures the sidebar Active section shows what you're working on.
-
-```
-1. Start work → TodoWrite with status="in_progress"
-2. Do the work
-3. Finish → TodoWrite with status="completed"
-```
-
-**Use TodoWrite for:**
-- Writing/editing code
-- Running agents (code-simplifier, explore, etc.)
-- Git operations (commit, push, PR)
-- Updating plans
-- Any discrete piece of work
-
-**Why this matters:**
-- The sidebar's "Claude" section shows in_progress todos
-- The auto-completion hook fires on completed todos
-- Matching sidebar tasks automatically move to Done
-- User always sees what Claude is working on
-
-**Don't skip this** - even for quick tasks. Consistency is key.
-
 ## Project Overview
 
-Claude Sidebar is a visual sidebar panel for managing a task queue alongside Claude Code. Supports two backends:
+cc-sidebar is a visual sidebar panel for managing a task queue alongside Claude Code. Supports two backends:
 - **iTerm2** (preferred) - Uses AppleScript, preserves scrollback
 - **tmux** - Uses tmux splits, has scrollback limitations
 
 ## Commands
 
 ```bash
-bun run src/cli.ts show       # Render sidebar in current terminal
-bun run src/cli.ts spawn      # Launch in split pane (auto-detects iTerm2 vs tmux)
-bun run src/cli.ts spawn --tmux  # Force tmux mode
-bun run src/cli.ts env        # Show environment info
+cc-sidebar show       # Render sidebar in current terminal
+cc-sidebar spawn      # Launch in split pane (auto-detects iTerm2 vs tmux)
+cc-sidebar spawn --tmux  # Force tmux mode
+cc-sidebar env        # Show environment info
 ```
 
 ## Architecture
@@ -83,3 +43,16 @@ Uses Bun, not Node.js:
 - `bun run` instead of `npm run`
 - `bun install` for dependencies
 - `Bun.$` for shell commands in tmux.ts
+
+## Development
+
+```bash
+# Install dependencies
+bun install
+
+# Run in development
+bun run src/cli.ts show
+
+# Spawn in split pane
+bun run src/cli.ts spawn
+```

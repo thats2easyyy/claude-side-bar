@@ -1,90 +1,128 @@
-# Claude Sidebar
+# cc-sidebar
 
-A Claude Code plugin that provides a visual sidebar panel for managing todos, context, and tasks—running alongside Claude Code in a split terminal pane.
+A visual sidebar for managing tasks alongside [Claude Code](https://claude.ai/code). Run it in a split pane next to your Claude Code session to queue tasks, track progress, and stay organized.
 
 ```
-┌─────────────────────────────┬──────────────────┐
-│                             │  Claude Sidebar  │
-│       Claude Code           │ ─────────────────│
-│                             │ Todos │ Context  │
-│                             │ ● Review PR      │
-│                             │ ◐ Fix auth bug   │
-└─────────────────────────────┴──────────────────┘
++-------------------------------+------------------+
+|                               |   cc-sidebar     |
+|        Claude Code            |------------------|
+|                               | Claude           |
+|                               |   Fixing bug...  |
+|                               |                  |
+|                               | Queue            |
+|                               |   Add tests      |
+|                               |   Update docs    |
++-------------------------------+------------------+
 ```
 
 ## Features
 
-- **Real-time todo sync**: Claude's TodoWrite items appear automatically
-- **Task queue**: Add tasks for Claude to work on
-- **Context panel**: Store files and notes for reference
+- **Task Queue**: Add tasks for Claude to work through
+- **Auto-completion detection**: Sidebar detects when Claude finishes a task
 - **Keyboard-driven**: Full keyboard navigation
+- **iTerm2 + tmux support**: Works with both (iTerm2 preferred)
 - **Persistent**: Data survives restarts
 
 ## Installation
 
+Requires [Bun](https://bun.sh) runtime.
+
 ```bash
-# Install the plugin in Claude Code
-/plugin install /path/to/claude-sidebar
+bun add -g cc-sidebar
 ```
+
+## Quick Start
+
+### Option 1: iTerm2 (Recommended)
+
+1. Open iTerm2
+2. Start Claude Code: `claude`
+3. Run: `cc-sidebar spawn`
+
+A split pane opens on the right with the sidebar.
+
+### Option 2: tmux
+
+1. Start tmux: `tmux`
+2. Start Claude Code: `claude`
+3. Run: `cc-sidebar spawn --tmux`
 
 ## Usage
 
-```bash
-# Start tmux if not already in a session
-tmux
-
-# Open the sidebar
-/sidebar
-```
-
-## Keyboard Shortcuts
+### Keyboard Shortcuts
 
 | Key | Action |
 |-----|--------|
-| Tab / Shift+Tab | Switch tabs |
-| Up / Down | Navigate list |
-| a | Add new item |
-| d | Delete selected item |
-| Enter | Select task for Claude |
-| Esc | Close sidebar |
+| `a` | Add new task |
+| `Enter` | Send task to Claude |
+| `e` | Edit selected task |
+| `d` | Delete selected task |
+| `j/k` or arrows | Navigate list |
+| `Tab` | Switch sections |
+| `q` or `Esc` | Quit sidebar |
 
-## How It Works
+### How It Works
 
-1. **Sidebar spawns in tmux**: Creates a 33% width pane on the right
-2. **Todos auto-sync**: A hook captures TodoWrite and updates the sidebar
-3. **Task selection**: Select a task and Claude reads it from `~/.claude-sidebar/selected.json`
+1. **Add tasks** to the Queue using `a`
+2. **Send a task** to Claude by pressing `Enter`
+3. **Task moves to Active** while Claude works
+4. **Auto-completes** when Claude returns to prompt
 
-## Development
-
-```bash
-# Install dependencies
-bun install
-
-# Run standalone (in terminal)
-bun run src/cli.ts show
-
-# Spawn in tmux pane
-bun run src/cli.ts spawn
-
-# Check environment
-bun run src/cli.ts env
-```
-
-## Tech Stack
-
-- **Runtime**: Bun
-- **Terminal UI**: Ink (React)
-- **Split panes**: tmux
-- **IPC**: Unix domain sockets
-- **Persistence**: JSON files in `~/.claude-sidebar/`
-
-## Files
+### Data Storage
 
 Data is stored in `~/.claude-sidebar/`:
 
 | File | Purpose |
 |------|---------|
-| `todos.json` | Claude's todos (synced from TodoWrite) |
-| `tasks.json` | User's task queue |
-| `selected.json` | Currently selected task |
-| `context.json` | Files and notes |
+| `tasks.json` | Task queue |
+| `active.json` | Current active task |
+| `history.log` | Completed tasks |
+
+## Claude Integration
+
+For automatic task completion tracking, add this to your `~/.claude/CLAUDE.md`:
+
+```markdown
+## Sidebar Integration
+
+When completing work, check if this project uses the sidebar task queue.
+
+**Detection:**
+- Compute project hash: `sha256(cwd).slice(0, 12)`
+- Check if `~/.claude-sidebar/projects/<hash>/tasks.json` exists
+- If not, skip this section
+
+**On task completion:**
+1. Read the tasks.json file for this project
+2. Find any task that semantically matches what you just completed
+3. Move the matching task to done.json (Review section) for user confirmation:
+   - Remove from tasks.json array
+   - Add to done.json array with `completedAt` timestamp
+4. Write both files back
+
+Keep it simple - if no clear match, don't move anything. User can manually mark tasks done.
+
+**done.json format:**
+```json
+[{"id": "...", "content": "task content", "completedAt": "ISO timestamp"}]
+```
+```
+
+## Commands
+
+```bash
+cc-sidebar show       # Render in current terminal
+cc-sidebar spawn      # Launch in split pane (auto-detects iTerm2 vs tmux)
+cc-sidebar spawn --tmux  # Force tmux mode
+cc-sidebar env        # Show environment info
+```
+
+## Requirements
+
+- [Bun](https://bun.sh) >= 1.0.0
+- iTerm2 or tmux
+- macOS (iTerm2 support) or Linux (tmux)
+
+## License
+
+MIT

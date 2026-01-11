@@ -89,16 +89,24 @@ const ansi = {
 
 type InputMode = "none" | "add" | "edit";
 
-// Wrap text into multiple lines
+// Wrap text into multiple lines (handles both newlines and width wrapping)
 function wrapText(text: string, maxWidth: number): string[] {
-  if (text.length <= maxWidth) return [text];
   const lines: string[] = [];
-  let remaining = text;
-  while (remaining.length > 0) {
-    lines.push(remaining.slice(0, maxWidth));
-    remaining = remaining.slice(maxWidth);
+  // First split by actual newlines
+  const paragraphs = text.split('\n');
+  for (const para of paragraphs) {
+    if (para.length <= maxWidth) {
+      lines.push(para);
+    } else {
+      // Wrap long lines
+      let remaining = para;
+      while (remaining.length > 0) {
+        lines.push(remaining.slice(0, maxWidth));
+        remaining = remaining.slice(maxWidth);
+      }
+    }
   }
-  return lines;
+  return lines.length > 0 ? lines : [''];
 }
 
 interface State {
@@ -413,8 +421,17 @@ export class RawSidebar {
   private handleInputMode(str: string): void {
     const { inputBuffer, inputCursor } = this.state;
 
-    // Enter - submit
-    if (str === '\r' || str === '\n') {
+    // Shift+Enter (\n) - insert newline
+    // In iTerm2: Enter sends \r, Shift+Enter sends \n
+    if (str === '\n') {
+      this.state.inputBuffer = inputBuffer.slice(0, inputCursor) + '\n' + inputBuffer.slice(inputCursor);
+      this.state.inputCursor = inputCursor + 1;
+      this.redrawInputText();
+      return;
+    }
+
+    // Enter (\r) - submit
+    if (str === '\r') {
       if (inputBuffer.trim()) {
         if (this.state.inputMode === "add") {
           addTask(inputBuffer.trim());
@@ -841,32 +858,64 @@ SCRIPT
     process.stdout.write(ansi.beginSync + this.getCursorPosition() + ansi.endSync);
   }
 
+  // Calculate visual row and column from cursor position in text with newlines
+  private getVisualCursorPos(): { row: number; col: number } {
+    const { inputBuffer, inputCursor } = this.state;
+    const maxWidth = this.width - 10;
+
+    let visualRow = 0;
+    let pos = 0;
+
+    // Walk through the text character by character
+    while (pos < inputCursor) {
+      if (inputBuffer[pos] === '\n') {
+        visualRow++;
+        pos++;
+      } else {
+        // Find the end of this line (next newline or end of text)
+        let lineStart = pos;
+        let lineEnd = inputBuffer.indexOf('\n', pos);
+        if (lineEnd === -1) lineEnd = inputBuffer.length;
+        const lineLen = lineEnd - lineStart;
+
+        // How many visual rows does this line take?
+        const visualLinesForThisLine = Math.max(1, Math.ceil(lineLen / maxWidth));
+
+        // Is cursor within this line?
+        if (inputCursor <= lineEnd) {
+          const posInLine = inputCursor - lineStart;
+          const extraRows = Math.floor(posInLine / maxWidth);
+          const col = posInLine % maxWidth;
+          return { row: visualRow + extraRows, col };
+        }
+
+        visualRow += visualLinesForThisLine;
+        pos = lineEnd + 1; // Move past the newline
+      }
+    }
+
+    // Cursor at the very end after a newline
+    return { row: visualRow, col: 0 };
+  }
+
   private getCursorPosition(): string {
-    const { inputCursor } = this.state;
-    const maxWidth = this.width - 10; // Account for "  ★ [ ] " prefix (8 chars) + padding
-
-    // Calculate which visual line the cursor is on and column within that line
-    const visualLine = Math.floor(inputCursor / maxWidth);
-    const col = inputCursor % maxWidth;
-
-    // Position cursor (this.inputRow is set during render)
-    const cursorRow = this.inputRow + visualLine;
+    const { row, col } = this.getVisualCursorPos();
+    const cursorRow = this.inputRow + row;
     const cursorCol = 9 + col; // 2 indent + 2 star + 4 bracket = 8, plus 1 for 1-indexed
     return ansi.cursorTo(cursorRow, cursorCol);
   }
 
   private redrawInputText(): void {
-    const { inputBuffer, inputCursor } = this.state;
+    const { inputBuffer } = this.state;
     const maxWidth = this.width - 10; // Account for "  ★ [ ] " prefix (8 chars) + padding
 
     // Wrap text into multiple lines
     const wrappedLines = wrapText(inputBuffer, maxWidth);
     if (wrappedLines.length === 0) wrappedLines.push('');
 
-    // Calculate cursor position
-    const visualLine = Math.floor(inputCursor / maxWidth);
-    const col = inputCursor % maxWidth;
-    const cursorRow = this.inputRow + visualLine;
+    // Calculate cursor position using the newline-aware function
+    const { row, col } = this.getVisualCursorPos();
+    const cursorRow = this.inputRow + row;
     const cursorCol = 9 + col;
 
     // Redraw all wrapped lines
@@ -1001,15 +1050,17 @@ SCRIPT
           const padding = ' '.repeat(Math.max(0, maxContentWidth - 2 - line.length));
           lines.push(`${bg}  ${prefix}${text}${line}${padding}${ansi.reset}`);
         });
-      } else if (isSelected && this.focused && task.content.length > maxContentWidth - 2) {
-        // Wrap long content when selected
+      } else if (isSelected && this.focused && (task.content.length > maxContentWidth - 2 || task.content.includes('\n'))) {
+        // Wrap long content or content with newlines when selected
         const wrappedLines = wrapText(task.content, maxContentWidth - 2);
         wrappedLines.forEach((line, i) => {
           const prefix = i === 0 ? `${star}${bracket}` : "      ";
           lines.push(`${bg}  ${color}${prefix}${line}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
         });
       } else {
-        const content = task.content.slice(0, maxContentWidth - 2);
+        // For non-selected or short content without newlines, show first line only
+        const firstLine = task.content.split('\n')[0] || task.content;
+        const content = firstLine.slice(0, maxContentWidth - 2);
         lines.push(`${bg}  ${color}${star}${bracket}${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       }
 
@@ -1054,7 +1105,7 @@ SCRIPT
     // Footer - context-aware help
     let helpText: string;
     if (inputMode !== "none") {
-      helpText = "↵: submit | Esc: cancel";
+      helpText = "↵: submit | ⇧↵: newline | Esc: cancel";
     } else if (selectedSection === "done") {
       helpText = "d: done | r: return to progress | ↑↓: navigate";
     } else {

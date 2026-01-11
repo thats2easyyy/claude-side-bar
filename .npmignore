@@ -1,0 +1,16 @@
+# Dev files
+.git
+.gitignore
+.claude
+.claude-plugin
+.cursor
+dist
+node_modules
+bun.lock
+
+# Docs that aren't needed in package
+SPEC.md
+scripts/
+
+# TypeScript config
+tsconfig.json
