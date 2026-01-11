@@ -17,6 +17,31 @@ Use the `atomic-plans` skill for all planning work:
 
 **Plan location:** `/Users/tyler/Desktop/notes/Projects/Claude Code Sidebar/`
 
+## TodoWrite Usage (Critical)
+
+**Always use TodoWrite for ALL work** - not just "big" tasks. This ensures the sidebar Active section shows what you're working on.
+
+```
+1. Start work → TodoWrite with status="in_progress"
+2. Do the work
+3. Finish → TodoWrite with status="completed"
+```
+
+**Use TodoWrite for:**
+- Writing/editing code
+- Running agents (code-simplifier, explore, etc.)
+- Git operations (commit, push, PR)
+- Updating plans
+- Any discrete piece of work
+
+**Why this matters:**
+- The sidebar's "Claude" section shows in_progress todos
+- The auto-completion hook fires on completed todos
+- Matching sidebar tasks automatically move to Done
+- User always sees what Claude is working on
+
+**Don't skip this** - even for quick tasks. Consistency is key.
+
 ## Project Overview
 
 Claude Sidebar is a visual sidebar panel for managing a task queue alongside Claude Code. Supports two backends:
