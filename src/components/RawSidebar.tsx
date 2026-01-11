@@ -695,24 +695,45 @@ export class RawSidebar {
       if (task) {
         const clarifyPrompt = `CLARIFY MODE
 
+TASK ID: ${task.id}
 TASK: ${task.content}
 
-Interview me in depth using AskUserQuestion about this task. Ask about anything relevant: technical implementation, UI/UX, edge cases, concerns, tradeoffs, constraints, dependencies, etc.
+Interview me about this task using AskUserQuestion. Ask about anything relevant: technical implementation, UI/UX, edge cases, concerns, tradeoffs, constraints, dependencies, etc.
 
 Guidelines:
 - Don't ask obvious questions - if something is clear from the task description, don't ask about it
 - Be thorough - keep interviewing until you have complete clarity
 - Always include "Anything else I should know?" as a final question
-- Ask about context handling: clear window / compact / keep / decide for me
-- Ask about Atomic Plans: create a plan / just execute / decide for me
 
-After clarification is complete, write specs to an Atomic Plan, then execute the task.`;
+After the interview:
+1. Write specs to an Atomic Plan file (check project CLAUDE.md for plan folder path)
+2. Update the task in the sidebar using this script:
+
+\`\`\`bash
+node << 'SCRIPT'
+const fs = require('fs');
+const crypto = require('crypto');
+const path = require('path');
+const sidebarDir = path.join(require('os').homedir(), '.claude-sidebar');
+const hash = crypto.createHash('sha256').update(process.cwd()).digest('hex').slice(0, 12);
+const tasksPath = path.join(sidebarDir, 'projects', hash, 'tasks.json');
+let tasks = JSON.parse(fs.readFileSync(tasksPath, 'utf-8'));
+const task = tasks.find(t => t.id === '${task.id}');
+if (task) {
+  task.clarified = true;
+  task.planPath = 'PLAN_FILENAME.md';  // REPLACE with actual plan filename
+  fs.writeFileSync(tasksPath, JSON.stringify(tasks, null, 2));
+  console.log('Task updated with clarified=true and planPath');
+}
+SCRIPT
+\`\`\`
+
+3. Ask me: "Execute this task now, or save for later?"
+   - If I say execute → work on the task
+   - If I say save → just confirm the task is clarified and stop`;
 
         sendToClaudePane(clarifyPrompt);
-        markTaskClarified(task.id);
-        activateTask(task.id);
-        this.loadData();
-        this.state.selectedIndex = Math.max(0, this.state.selectedIndex - 1);
+        // Don't activate - let the task stay in queue until user decides
         this.render();
         focusClaudePane();
       }
@@ -943,7 +964,7 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
     // Review section (tasks Claude thinks are done, awaiting user confirmation)
     const { selectedSection, doneSelectedIndex } = this.state;
     if (doneTasks.length > 0) {
-      lines.push(`${bg}  ${bold}${text}Review${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(`${bg}  ${bold}${text}Review (${doneTasks.length})${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       doneTasks.slice(0, 5).forEach((task, index) => {
         const isSelected = selectedSection === "done" && index === doneSelectedIndex && this.focused;
         const content = task.content.slice(0, maxContentWidth);
