@@ -41,8 +41,10 @@ export interface Task {
   id: string;
   content: string;
   createdAt: string;
-  clarified?: boolean;              // Was this task clarified via interview/brain-dump?
-  priority?: "focus" | "backlog";   // Section assignment
+  clarified?: boolean;      // Was this task clarified via interview/brain-dump?
+  priority?: number;        // Sort order (lower = higher priority, 1 = most important)
+  recommended?: boolean;    // Claude's top picks (shown with star)
+  planPath?: string;        // Filename of associated Atomic Plan
 }
 
 export interface ActiveTask {
@@ -148,7 +150,12 @@ export function setTasks(tasks: Task[]): void {
 
 export function addTask(
   content: string,
-  options?: { clarified?: boolean; priority?: "focus" | "backlog" }
+  options?: {
+    clarified?: boolean;
+    priority?: number;
+    recommended?: boolean;
+    planPath?: string;
+  }
 ): Task {
   const tasks = getTasks();
   const task: Task = {
@@ -157,6 +164,8 @@ export function addTask(
     createdAt: new Date().toISOString(),
     clarified: options?.clarified,
     priority: options?.priority,
+    recommended: options?.recommended,
+    planPath: options?.planPath,
   };
   tasks.push(task);
   setTasks(tasks);

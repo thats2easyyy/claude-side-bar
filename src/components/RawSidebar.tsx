@@ -142,14 +142,22 @@ export class RawSidebar {
   private isPasting = false;
   private pasteBuffer = "";
 
-  // Get tasks sorted by priority (focus → backlog → uncategorized)
-  // This must match the order used in render()
+  // Get tasks sorted by priority (lower number = higher priority)
+  // Tasks without priority go last, sorted by createdAt
   private getSortedTasks(): Task[] {
     const { tasks } = this.state;
-    const focusTasks = tasks.filter(t => t.priority === "focus");
-    const backlogTasks = tasks.filter(t => t.priority === "backlog");
-    const uncategorizedTasks = tasks.filter(t => !t.priority);
-    return [...focusTasks, ...backlogTasks, ...uncategorizedTasks];
+    return [...tasks].sort((a, b) => {
+      // Both have priority: sort by priority (lower first)
+      if (a.priority !== undefined && b.priority !== undefined) {
+        return a.priority - b.priority;
+      }
+      // Only a has priority: a comes first
+      if (a.priority !== undefined) return -1;
+      // Only b has priority: b comes first
+      if (b.priority !== undefined) return 1;
+      // Neither has priority: sort by createdAt (oldest first)
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    });
   }
 
   constructor(onClose?: () => void) {
@@ -318,8 +326,9 @@ export class RawSidebar {
       if (lines.length === 1) {
         // Single line - insert into buffer
         const { inputBuffer, inputCursor } = this.state;
-        this.state.inputBuffer = inputBuffer.slice(0, inputCursor) + lines[0] + inputBuffer.slice(inputCursor);
-        this.state.inputCursor = inputCursor + lines[0].length;
+        const line = lines[0] || '';
+        this.state.inputBuffer = inputBuffer.slice(0, inputCursor) + line + inputBuffer.slice(inputCursor);
+        this.state.inputCursor = inputCursor + line.length;
         this.redrawInputText();
       } else {
         // Multiple lines - create tasks for each
@@ -353,7 +362,7 @@ export class RawSidebar {
       const afterStart = str.split(pasteStart)[1] || "";
       if (afterStart.includes(pasteEnd)) {
         // Paste start and end in same chunk
-        const content = afterStart.split(pasteEnd)[0];
+        const content = afterStart.split(pasteEnd)[0] || "";
         this.handlePaste(content);
         this.isPasting = false;
       } else {
@@ -454,7 +463,7 @@ export class RawSidebar {
 
     // Up arrow - move up one visual line
     if (str === '\x1b[A' || str === '\x1bOA') {
-      const maxWidth = this.width - 8;
+      const maxWidth = this.width - 10;
       if (inputCursor >= maxWidth) {
         this.state.inputCursor = inputCursor - maxWidth;
         this.moveCursor();
@@ -464,7 +473,7 @@ export class RawSidebar {
 
     // Down arrow - move down one visual line
     if (str === '\x1b[B' || str === '\x1bOB') {
-      const maxWidth = this.width - 8;
+      const maxWidth = this.width - 10;
       const newPos = inputCursor + maxWidth;
       if (newPos <= inputBuffer.length) {
         this.state.inputCursor = newPos;
@@ -503,7 +512,7 @@ export class RawSidebar {
 
     // Ctrl+A - start of current visual line
     if (str === '\x01') {
-      const maxWidth = this.width - 8;
+      const maxWidth = this.width - 10;
       const visualLine = Math.floor(inputCursor / maxWidth);
       this.state.inputCursor = visualLine * maxWidth;
       this.moveCursor();
@@ -512,7 +521,7 @@ export class RawSidebar {
 
     // Ctrl+E - end of current visual line
     if (str === '\x05') {
-      const maxWidth = this.width - 8;
+      const maxWidth = this.width - 10;
       const visualLine = Math.floor(inputCursor / maxWidth);
       const lineEnd = Math.min((visualLine + 1) * maxWidth, inputBuffer.length);
       this.state.inputCursor = lineEnd;
@@ -734,7 +743,7 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
         this.state.editingTaskId = task.id;
         this.state.inputBuffer = task.content;
         this.state.inputCursor = task.content.length;
-        const maxWidth = this.width - 8;
+        const maxWidth = this.width - 10;
         this.prevInputLineCount = Math.max(1, Math.ceil(task.content.length / maxWidth));
         this.render();
         this.setupInputCursor();
@@ -813,7 +822,7 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
 
   private getCursorPosition(): string {
     const { inputCursor } = this.state;
-    const maxWidth = this.width - 8; // Account for "  [ ] " prefix (6 chars) + padding
+    const maxWidth = this.width - 10; // Account for "  ★ [ ] " prefix (8 chars) + padding
 
     // Calculate which visual line the cursor is on and column within that line
     const visualLine = Math.floor(inputCursor / maxWidth);
@@ -821,13 +830,13 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
 
     // Position cursor (this.inputRow is set during render)
     const cursorRow = this.inputRow + visualLine;
-    const cursorCol = 7 + col; // 2 indent + 4 bracket = 6, plus 1 for 1-indexed
+    const cursorCol = 9 + col; // 2 indent + 2 star + 4 bracket = 8, plus 1 for 1-indexed
     return ansi.cursorTo(cursorRow, cursorCol);
   }
 
   private redrawInputText(): void {
     const { inputBuffer, inputCursor } = this.state;
-    const maxWidth = this.width - 8; // Account for "  [ ] " prefix
+    const maxWidth = this.width - 10; // Account for "  ★ [ ] " prefix (8 chars) + padding
 
     // Wrap text into multiple lines
     const wrappedLines = wrapText(inputBuffer, maxWidth);
@@ -837,12 +846,12 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
     const visualLine = Math.floor(inputCursor / maxWidth);
     const col = inputCursor % maxWidth;
     const cursorRow = this.inputRow + visualLine;
-    const cursorCol = 7 + col;
+    const cursorCol = 9 + col;
 
     // Redraw all wrapped lines
     let output = ansi.beginSync;
     wrappedLines.forEach((line, i) => {
-      const prefix = i === 0 ? '[ ] ' : '    ';
+      const prefix = i === 0 ? '  [ ] ' : '      '; // 2 star area + 4 bracket or 6 spaces
       const padding = ' '.repeat(Math.max(0, maxWidth - line.length));
       output += ansi.cursorTo(this.inputRow + i, 1) +
         `${ansi.bgGray}  ${prefix}${ansi.black}${line}${padding}  ${ansi.reset}`;
@@ -945,92 +954,72 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
       lines.push(bgLine);
     }
 
-    // To-dos section - split into Focus and Backlog with clarified indicators
-    // Sort tasks: focus first, then backlog, then uncategorized
-    const focusTasks = tasks.filter(t => t.priority === "focus");
-    const backlogTasks = tasks.filter(t => t.priority === "backlog");
-    const uncategorizedTasks = tasks.filter(t => !t.priority);
-
-    // Combined sorted list for navigation (focus, backlog, uncategorized)
-    const sortedTasks = [...focusTasks, ...backlogTasks, ...uncategorizedTasks];
+    // To-dos section - single flat list sorted by priority
+    const sortedTasks = this.getSortedTasks();
 
     // Track where the input line is for cursor positioning
     let inputLineRow = 0;
-    let taskIndex = 0;
 
     // Helper to render a task
-    // Design: [ ] for unselected, [>] for selected
-    // Clarified: black text, Unclarified: gray text
-    // Alignment: 2 space indent + 4 char indicator ([ ] or [>]) + text
+    // Design: ★ for recommended, [>] for selected, [ ] for unselected
+    // Clarified tasks show planPath on second line when selected
     const renderTask = (task: Task, index: number) => {
       const isSelected = selectedSection === "queue" && index === selectedIndex;
       const isEditing = inputMode === "edit" && editingTaskId === task.id;
+      const star = task.recommended ? "★ " : "  ";
       const bracket = (isSelected && this.focused) ? "[>] " : "[ ] ";
       const color = task.clarified ? text : muted;
 
       if (isEditing) {
         inputLineRow = lines.length + 1;
         this.inputRow = inputLineRow;
-        const wrappedLines = wrapText(inputBuffer, maxContentWidth);
+        const wrappedLines = wrapText(inputBuffer, maxContentWidth - 2); // Account for star
         if (wrappedLines.length === 0) wrappedLines.push('');
         wrappedLines.forEach((line, i) => {
-          const prefix = i === 0 ? bracket : "    "; // 4 spaces to align with text
-          const padding = ' '.repeat(Math.max(0, maxContentWidth - line.length));
+          const prefix = i === 0 ? `${star}${bracket}` : "      "; // 6 spaces to align with text
+          const padding = ' '.repeat(Math.max(0, maxContentWidth - 2 - line.length));
           lines.push(`${bg}  ${prefix}${text}${line}${padding}${ansi.reset}`);
         });
-      } else if (isSelected && this.focused && task.content.length > maxContentWidth) {
-        const wrappedLines = wrapText(task.content, maxContentWidth);
+      } else if (isSelected && this.focused && task.content.length > maxContentWidth - 2) {
+        // Wrap long content when selected
+        const wrappedLines = wrapText(task.content, maxContentWidth - 2);
         wrappedLines.forEach((line, i) => {
-          const prefix = i === 0 ? bracket : "    ";
+          const prefix = i === 0 ? `${star}${bracket}` : "      ";
           lines.push(`${bg}  ${color}${prefix}${line}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
         });
       } else {
-        const content = task.content.slice(0, maxContentWidth);
-        lines.push(`${bg}  ${color}${bracket}${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+        const content = task.content.slice(0, maxContentWidth - 2);
+        lines.push(`${bg}  ${color}${star}${bracket}${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      }
+
+      // Show plan path on second line when selected and has planPath
+      if (isSelected && this.focused && task.planPath && !isEditing) {
+        const planDisplay = `→ ${task.planPath}`.slice(0, maxContentWidth - 2);
+        lines.push(`${bg}  ${muted}      ${planDisplay}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       }
     };
 
-    // Render Focus section
-    if (focusTasks.length > 0) {
-      lines.push(`${bg}  ${bold}${text}Focus (${focusTasks.length})${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-      focusTasks.forEach((task) => {
-        renderTask(task, taskIndex++);
-      });
-    }
-
-    // Render Backlog section
-    if (backlogTasks.length > 0) {
-      lines.push(`${bg}  ${bold}${text}Backlog (${backlogTasks.length})${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-      backlogTasks.forEach((task) => {
-        renderTask(task, taskIndex++);
-      });
-    }
-
-    // Render uncategorized (To-dos) section
-    if (uncategorizedTasks.length > 0 || (focusTasks.length === 0 && backlogTasks.length === 0)) {
-      const header = focusTasks.length > 0 || backlogTasks.length > 0
-        ? `Uncategorized (${uncategorizedTasks.length})`
-        : `To-dos${uncategorizedTasks.length > 0 ? ` (${uncategorizedTasks.length})` : ''}`;
-      lines.push(`${bg}  ${bold}${text}${header}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-      uncategorizedTasks.forEach((task) => {
-        renderTask(task, taskIndex++);
-      });
-    }
+    // Render To-dos header and tasks
+    const todoCount = sortedTasks.length > 0 ? ` (${sortedTasks.length})` : '';
+    lines.push(`${bg}  ${bold}${text}To-dos${todoCount}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+    sortedTasks.forEach((task, index) => {
+      renderTask(task, index);
+    });
 
     // Add new task input
     if (inputMode === "add") {
       inputLineRow = lines.length + 1; // 1-indexed row number
       this.inputRow = inputLineRow; // Store for cursor positioning
-      const wrappedLines = wrapText(inputBuffer, maxContentWidth);
+      const wrappedLines = wrapText(inputBuffer, maxContentWidth - 2); // Account for star area
       if (wrappedLines.length === 0) wrappedLines.push('');
       wrappedLines.forEach((line, i) => {
-        const prefix = i === 0 ? '[ ] ' : '    ';
-        const padding = ' '.repeat(Math.max(0, maxContentWidth - line.length));
+        const prefix = i === 0 ? '  [ ] ' : '      '; // 2 space star area + 4 char bracket
+        const padding = ' '.repeat(Math.max(0, maxContentWidth - 2 - line.length));
         lines.push(`${bg}  ${prefix}${text}${line}${padding}${ansi.reset}`);
       });
     } else if (this.focused) {
       // Show hint to add task (only when focused)
-      lines.push(`${bg}  ${ansi.gray}[ ] press a to add${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(`${bg}  ${ansi.gray}  [ ] press a to add${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
 
     // Fill remaining space
