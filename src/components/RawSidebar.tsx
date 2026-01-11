@@ -17,6 +17,7 @@ import {
   completeActiveTask,
   getRecentlyDone,
   removeFromDone,
+  returnToActive,
   type Task,
   type ActiveTask,
   type DoneTask,
@@ -725,7 +726,7 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
       return;
     }
 
-    // 'd' - delete task (works on queue or done section)
+    // 'd' - delete from queue, or confirm done in Review section
     if (str === 'd') {
       if (this.state.selectedSection === "queue") {
         const task = this.state.tasks[this.state.selectedIndex];
@@ -736,20 +737,43 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
           this.render();
         }
       } else {
-        // Delete from done section
+        // Confirm done - remove from Review section
         const task = this.state.doneTasks[this.state.doneSelectedIndex];
         if (task) {
           removeFromDone(task.id);
           this.state.doneTasks = getRecentlyDone();
           // Adjust selection if needed
           if (this.state.doneTasks.length === 0) {
-            // No more done tasks, go back to queue
+            // No more review tasks, go back to queue
             this.state.selectedSection = "queue";
             this.state.selectedIndex = Math.max(0, this.state.tasks.length - 1);
           } else {
             this.state.doneSelectedIndex = Math.min(
               this.state.doneSelectedIndex,
               this.state.doneTasks.length - 1
+            );
+          }
+          this.render();
+        }
+      }
+      return;
+    }
+
+    // 'r' - return Review item to In Progress (not done yet)
+    if (str === 'r') {
+      if (this.state.selectedSection === "done") {
+        const task = this.state.doneTasks[this.state.doneSelectedIndex];
+        if (task) {
+          returnToActive(task.id);
+          this.loadData();
+          // Adjust selection if needed
+          if (this.state.doneTasks.length === 0) {
+            this.state.selectedSection = "queue";
+            this.state.selectedIndex = Math.max(0, this.state.tasks.length - 1);
+          } else {
+            this.state.doneSelectedIndex = Math.min(
+              this.state.doneSelectedIndex,
+              Math.max(0, this.state.doneTasks.length - 1)
             );
           }
           this.render();
@@ -858,15 +882,15 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
     lines.push(`${bg}  ${text}${headerContent}${ansi.clearToEnd}${ansi.reset}`);
     lines.push(bgLine); // Space after header
 
-    // Active section - combines sidebar active task + Claude's TodoWrite items
+    // In Progress section - combines sidebar active task + Claude's TodoWrite items
     const { claudeTodos } = this.state;
     const { activeTask, doneTasks } = this.state;
     const activeTodos = claudeTodos.filter(t => t.status !== "completed");
     const maxContentWidth = this.width - 8;
 
-    // Show Active section if there's an active task OR in-progress todos
+    // Show In Progress section if there's an active task OR in-progress todos
     if (activeTask || activeTodos.length > 0) {
-      lines.push(`${bg}  ${bold}${text}Active${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(`${bg}  ${bold}${text}In Progress${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
 
       // Show sidebar active task first (sent from queue)
       if (activeTask) {
@@ -891,14 +915,14 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
       lines.push(bgLine);
     }
 
-    // Done section (recently completed tasks, navigable for deletion)
+    // Review section (tasks Claude thinks are done, awaiting user confirmation)
     const { selectedSection, doneSelectedIndex } = this.state;
     if (doneTasks.length > 0) {
-      lines.push(`${bg}  ${bold}${text}Done${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(`${bg}  ${bold}${text}Review${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       doneTasks.slice(0, 5).forEach((task, index) => {
         const isSelected = selectedSection === "done" && index === doneSelectedIndex && this.focused;
         const content = task.content.slice(0, maxContentWidth - 2);
-        const icon = isSelected ? "[✓]" : " ✓ ";
+        const icon = isSelected ? "[?]" : " ? ";
         const color = isSelected ? text : muted;
         lines.push(`${bg}  ${color}${icon} ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       });
@@ -965,10 +989,15 @@ After clarification is complete, write specs to an Atomic Plan, then execute the
       lines.push(bgLine);
     }
 
-    // Footer
-    const helpText = inputMode !== "none"
-      ? "↵: submit | Esc: cancel"
-      : "a: add | e: edit | d: del | ↵: send | c: clarify";
+    // Footer - context-aware help
+    let helpText: string;
+    if (inputMode !== "none") {
+      helpText = "↵: submit | Esc: cancel";
+    } else if (selectedSection === "done") {
+      helpText = "d: done | r: return to progress | ↑↓: navigate";
+    } else {
+      helpText = "a: add | e: edit | d: del | ↵: send | c: clarify";
+    }
     lines.push(`${bg}  ${muted}${helpText}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     lines.push(bgLine);
 

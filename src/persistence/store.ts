@@ -286,6 +286,22 @@ export function removeFromDone(id: string): void {
   writeProjectJson("done.json", done);
 }
 
+// Return a done task back to active (user says "not done yet")
+export function returnToActive(id: string): void {
+  const done = getRecentlyDone();
+  const task = done.find((t) => t.id === id);
+  if (task) {
+    // Remove from done
+    writeProjectJson("done.json", done.filter((t) => t.id !== id));
+    // Set as active
+    writeProjectJson("active.json", {
+      id: task.id,
+      content: task.content,
+      sentAt: new Date().toISOString(),
+    });
+  }
+}
+
 // Complete active task (move to done list and history)
 export function completeActiveTask(): void {
   const active = getActiveTask();
