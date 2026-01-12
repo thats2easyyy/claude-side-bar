@@ -52,7 +52,7 @@ export interface Task {
   id: string;
   content: string;
   createdAt: string;
-  clarified?: boolean;      // Was this task clarified via interview/brain-dump?
+  clarified?: boolean;      // Was this task clarified via /clarify skill?
   priority?: number;        // Sort order (lower = higher priority, 1 = most important)
   recommended?: boolean;    // Claude's top picks (shown with star)
   planPath?: string;        // Filename of associated Atomic Plan

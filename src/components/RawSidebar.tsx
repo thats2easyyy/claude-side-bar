@@ -711,47 +711,8 @@ export class RawSidebar {
       const sortedTasks = this.getSortedTasks();
       const task = sortedTasks[this.state.selectedIndex];
       if (task) {
-        const clarifyPrompt = `CLARIFY MODE
-
-TASK ID: ${task.id}
-TASK: ${task.content}
-
-Interview me about this task using AskUserQuestion. Ask about anything relevant: technical implementation, UI/UX, edge cases, concerns, tradeoffs, constraints, dependencies, etc.
-
-Guidelines:
-- Don't ask obvious questions - if something is clear from the task description, don't ask about it
-- Be thorough - keep interviewing until you have complete clarity
-- Always include "Anything else I should know?" as a final question
-
-After the interview:
-1. Write specs to an Atomic Plan file (check project CLAUDE.md for plan folder path)
-2. Update the task in the sidebar using this script:
-
-\`\`\`bash
-node << 'SCRIPT'
-const fs = require('fs');
-const crypto = require('crypto');
-const path = require('path');
-const sidebarDir = path.join(require('os').homedir(), '.claude-sidebar');
-const hash = crypto.createHash('sha256').update(process.cwd()).digest('hex').slice(0, 12);
-const tasksPath = path.join(sidebarDir, 'projects', hash, 'tasks.json');
-let tasks = JSON.parse(fs.readFileSync(tasksPath, 'utf-8'));
-const task = tasks.find(t => t.id === '${task.id}');
-if (task) {
-  task.clarified = true;
-  task.planPath = 'PLAN_FILENAME.md';  // REPLACE with actual plan filename
-  fs.writeFileSync(tasksPath, JSON.stringify(tasks, null, 2));
-  console.log('Task updated with clarified=true and planPath');
-}
-SCRIPT
-\`\`\`
-
-3. Ask me: "Execute this task now, or save for later?"
-   - If I say execute → work on the task
-   - If I say save → just confirm the task is clarified and stop`;
-
-        sendToClaudePane(clarifyPrompt);
-        // Don't activate - let the task stay in queue until user decides
+        // Invoke the clarify skill with task ID
+        sendToClaudePane(`/clarify --task-id ${task.id} ${task.content}`);
         this.render();
         focusClaudePane();
       }

@@ -128,7 +128,7 @@ cc-sidebar includes skills that integrate with Claude Code:
 
 | Skill | Trigger | What it does |
 |-------|---------|--------------|
-| `/brain-dump` | `/brain-dump` | Interview to extract tasks from messy thoughts, creates plan + todos |
+| `/clarify` | `/clarify` | Interview to clarify tasks, creates plan + todos (works for new or existing tasks) |
 | `/prioritize` | `/prioritize` | Re-prioritize all sidebar tasks as a staff engineer |
 | `sidebar-awareness` | (always on) | Gives Claude context about sidebar data files |
 
@@ -142,7 +142,7 @@ cp -r ~/.bun/install/global/node_modules/cc-sidebar/skills/* ~/.claude/skills/
 Or install individually:
 
 ```bash
-cp -r ~/.bun/install/global/node_modules/cc-sidebar/skills/brain-dump ~/.claude/skills/
+cp -r ~/.bun/install/global/node_modules/cc-sidebar/skills/clarify ~/.claude/skills/
 cp -r ~/.bun/install/global/node_modules/cc-sidebar/skills/prioritize ~/.claude/skills/
 ```
 
