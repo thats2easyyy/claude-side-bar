@@ -31,6 +31,16 @@ Requires [Bun](https://bun.sh) runtime.
 bun add -g cc-sidebar
 ```
 
+### Shell Alias (Recommended)
+
+Add to your `~/.zshrc` or `~/.bashrc`:
+
+```bash
+alias sidebar='cc-sidebar show'
+```
+
+Then just type `sidebar` from any project directory.
+
 ## Quick Start
 
 ### Option 1: iTerm2 (Recommended)
@@ -78,9 +88,13 @@ Data is stored in `~/.claude-sidebar/`:
 | `active.json` | Current active task |
 | `history.log` | Completed tasks |
 
-## Claude Integration
+## Claude Code Setup
 
-For automatic task completion tracking, add this to your `~/.claude/CLAUDE.md`:
+Two optional integrations to make Claude aware of the sidebar:
+
+### 1. Auto-completion (Recommended)
+
+Add this to your `~/.claude/CLAUDE.md` so Claude automatically marks sidebar tasks as done:
 
 ```markdown
 ## Sidebar Integration
@@ -107,6 +121,18 @@ Keep it simple - if no clear match, don't move anything. User can manually mark 
 [{"id": "...", "content": "task content", "completedAt": "ISO timestamp"}]
 ```
 ```
+
+### 2. Sidebar Awareness Skill (Optional)
+
+Install the bundled skill to give Claude context about the sidebar:
+
+```bash
+# Copy the skill to your Claude skills directory
+mkdir -p ~/.claude/skills
+cp -r ~/.bun/install/global/node_modules/cc-sidebar/skills/sidebar-awareness ~/.claude/skills/
+```
+
+This skill tells Claude about the sidebar's data files and how tasks flow through it.
 
 ## Commands
 
