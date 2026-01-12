@@ -24,7 +24,8 @@
   "files": [
     "src",
     "skills",
-    "commands"
+    "commands",
+    "scripts"
   ],
   "scripts": {
     "start": "bun run src/cli.ts",
