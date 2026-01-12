@@ -958,6 +958,7 @@ SCRIPT
     lines.push(bgLine);
 
     // Repo and branch at top (always computed locally per-instance)
+    const { statusline } = this.state;
     let branch = '';
     let repo = '';
     try {
