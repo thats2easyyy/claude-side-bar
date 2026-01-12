@@ -24,7 +24,7 @@ import { RawSidebar } from "./components/RawSidebar";
 program
   .name("cc-sidebar")
   .description("Visual sidebar for Claude Code")
-  .version("0.1.1");
+  .version("0.1.2");
 
 // Show command - render sidebar in current terminal
 program

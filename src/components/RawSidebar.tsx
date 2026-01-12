@@ -8,6 +8,7 @@ import {
   getTasks,
   getStatusline,
   getClaudeTodos,
+  getEffectiveCwd,
   addTask,
   updateTask,
   removeTask,
@@ -956,20 +957,15 @@ SCRIPT
     // Header padding
     lines.push(bgLine);
 
-    // Repo and branch at top (from statusline if available, else fallback)
-    const { statusline } = this.state;
-    let branch = statusline?.branch || '';
-    let repo = statusline?.repo || '';
-    if (!branch) {
-      try {
-        branch = execSync('git rev-parse --abbrev-ref HEAD 2>/dev/null', { encoding: 'utf8' }).trim();
-      } catch {}
-    }
-    if (!repo) {
-      const cwd = process.cwd();
-      const parts = cwd.split('/').filter(Boolean);
-      repo = parts[parts.length - 1] || cwd;
-    }
+    // Repo and branch at top (always computed locally per-instance)
+    let branch = '';
+    let repo = '';
+    try {
+      branch = execSync('git rev-parse --abbrev-ref HEAD 2>/dev/null', { encoding: 'utf8' }).trim();
+    } catch {}
+    const cwd = getEffectiveCwd();
+    const parts = cwd.split('/').filter(Boolean);
+    repo = parts[parts.length - 1] || cwd;
     const branchDisplay = branch ? `${branch}` : '';
     const repoDisplay = repo ? `${repo}` : '';
     const headerContent = branchDisplay && repoDisplay
