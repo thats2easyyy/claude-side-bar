@@ -111,10 +111,23 @@ Keep it simple - if no clear match, don't move anything. User can manually mark 
 ## Commands
 
 ```bash
-cc-sidebar show       # Render in current terminal
-cc-sidebar spawn      # Launch in split pane (auto-detects iTerm2 vs tmux)
-cc-sidebar spawn --tmux  # Force tmux mode
-cc-sidebar env        # Show environment info
+cc-sidebar show             # Render in current terminal
+cc-sidebar show --dir /path # Show tasks for a specific project
+cc-sidebar spawn            # Launch in split pane (auto-detects iTerm2 vs tmux)
+cc-sidebar spawn --tmux     # Force tmux mode
+cc-sidebar env              # Show environment info
+```
+
+### Working with Multiple Projects
+
+The sidebar stores tasks per-project based on the working directory. Use `--dir` to show tasks for any project without changing directories:
+
+```bash
+# Show sidebar for a specific project
+cc-sidebar show --dir ~/projects/my-app
+
+# Create an alias for a frequent project
+alias sidebar-app="cc-sidebar show --dir ~/projects/my-app"
 ```
 
 ## Requirements

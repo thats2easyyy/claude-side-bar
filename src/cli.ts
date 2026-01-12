@@ -14,7 +14,7 @@ import { isInTmux, getEnvInfo, spawnSidebarPane } from "./terminal/tmux";
 import { isInITerm, spawnITermSidebarPane, getITermEnvInfo } from "./terminal/iterm";
 import { createIPCServer } from "./ipc/server";
 import { sendMessage } from "./ipc/client";
-import { getSocketPath, ensureDir } from "./persistence/store";
+import { getSocketPath, ensureDir, setProjectDir } from "./persistence/store";
 import { dirname } from "path";
 import { RawSidebar } from "./components/RawSidebar";
 
@@ -24,14 +24,20 @@ import { RawSidebar } from "./components/RawSidebar";
 program
   .name("cc-sidebar")
   .description("Visual sidebar for Claude Code")
-  .version("0.1.0");
+  .version("0.1.1");
 
 // Show command - render sidebar in current terminal
 program
   .command("show")
   .description("Render sidebar in current terminal")
   .option("-s, --socket <path>", "Unix socket path for IPC")
+  .option("-d, --dir <path>", "Project directory (defaults to current directory)")
   .action(async (options) => {
+    // Set project directory if specified
+    if (options.dir) {
+      const { resolve } = await import("path");
+      setProjectDir(resolve(options.dir));
+    }
     ensureDir();
     const socketPath = options.socket || getSocketPath();
 

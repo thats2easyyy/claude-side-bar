@@ -11,9 +11,20 @@ import { join } from "path";
 
 const SIDEBAR_DIR = join(homedir(), ".claude-sidebar");
 
+// Allow overriding the project directory (for --dir flag)
+let projectDirOverride: string | null = null;
+
+export function setProjectDir(dir: string | null): void {
+  projectDirOverride = dir;
+}
+
+export function getEffectiveCwd(): string {
+  return projectDirOverride || process.cwd();
+}
+
 // Get a short hash of the working directory for project isolation
 function getProjectHash(): string {
-  const cwd = process.cwd();
+  const cwd = getEffectiveCwd();
   return createHash("sha256").update(cwd).digest("hex").slice(0, 12);
 }
 
@@ -31,7 +42,7 @@ function updateProjectMapping(): void {
       mapping = JSON.parse(readFileSync(mappingPath, "utf-8"));
     }
   } catch {}
-  mapping[getProjectHash()] = process.cwd();
+  mapping[getProjectHash()] = getEffectiveCwd();
   ensureDir();
   mkdirSync(join(SIDEBAR_DIR, "projects"), { recursive: true });
   writeFileSync(mappingPath, JSON.stringify(mapping, null, 2));

@@ -1,6 +1,6 @@
 {
   "name": "cc-sidebar",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Visual sidebar for managing todos, tasks, and context alongside Claude Code",
   "author": "Tyler Nishida",
   "license": "MIT",
