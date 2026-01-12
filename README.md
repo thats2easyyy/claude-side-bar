@@ -122,17 +122,29 @@ Keep it simple - if no clear match, don't move anything. User can manually mark 
 ```
 ```
 
-### 2. Sidebar Awareness Skill (Optional)
+### 2. Install Skills (Recommended)
 
-Install the bundled skill to give Claude context about the sidebar:
+cc-sidebar includes skills that integrate with Claude Code:
+
+| Skill | Trigger | What it does |
+|-------|---------|--------------|
+| `/brain-dump` | `/brain-dump` | Interview to extract tasks from messy thoughts, creates plan + todos |
+| `/prioritize` | `/prioritize` | Re-prioritize all sidebar tasks as a staff engineer |
+| `sidebar-awareness` | (always on) | Gives Claude context about sidebar data files |
+
+Install all skills:
 
 ```bash
-# Copy the skill to your Claude skills directory
 mkdir -p ~/.claude/skills
-cp -r ~/.bun/install/global/node_modules/cc-sidebar/skills/sidebar-awareness ~/.claude/skills/
+cp -r ~/.bun/install/global/node_modules/cc-sidebar/skills/* ~/.claude/skills/
 ```
 
-This skill tells Claude about the sidebar's data files and how tasks flow through it.
+Or install individually:
+
+```bash
+cp -r ~/.bun/install/global/node_modules/cc-sidebar/skills/brain-dump ~/.claude/skills/
+cp -r ~/.bun/install/global/node_modules/cc-sidebar/skills/prioritize ~/.claude/skills/
+```
 
 ## Commands
 
