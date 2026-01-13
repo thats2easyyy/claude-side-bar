@@ -25,11 +25,33 @@ A visual sidebar for managing tasks alongside [Claude Code](https://claude.ai/co
 
 ## Installation
 
-Requires [Bun](https://bun.sh) runtime.
+Tell Claude Code to install it:
+
+```
+Install cc-sidebar from https://github.com/thats2easyyy/claude-side-bar
+```
+
+Claude will install the package, configure hooks, and set up skills automatically.
+
+### Manual Installation
+
+If you prefer to install manually:
 
 ```bash
 bun add -g cc-sidebar
 ```
+
+Then see [Claude Code Setup](#claude-code-setup) below for hooks and skills.
+
+### Updating
+
+Tell Claude Code:
+
+```
+Update cc-sidebar to the latest version
+```
+
+Or manually: `bun update -g cc-sidebar`
 
 ### Shell Alias (Recommended)
 
