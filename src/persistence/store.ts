@@ -235,9 +235,9 @@ export function getStatusline(): StatuslineData | null {
   return readJson<StatuslineData | null>("statusline.json", null);
 }
 
-// Claude's todo list (from TodoWrite hook)
+// Claude's todo list (from TodoWrite hook) - PROJECT SPECIFIC
 export function getClaudeTodos(): ClaudeTodosData | null {
-  return readJson<ClaudeTodosData | null>("claude-todos.json", null);
+  return readProjectJson<ClaudeTodosData | null>("claude-todos.json", null);
 }
 
 // Claude Code config (plugins and MCPs)

@@ -132,11 +132,12 @@ async function main() {
     const payload: HookPayload = JSON.parse(input);
 
     if (payload.tool_name === "TodoWrite" && payload.tool_input?.todos) {
-      // Ensure directory exists
-      mkdirSync(SIDEBAR_DIR, { recursive: true });
+      // Write to project-specific directory (same as sidebar tasks)
+      const projectDir = getProjectDir();
+      mkdirSync(projectDir, { recursive: true });
 
-      // Write todos to file for sidebar to poll
-      const todosPath = join(SIDEBAR_DIR, "claude-todos.json");
+      // Write todos to project-specific file for sidebar to poll
+      const todosPath = join(projectDir, "claude-todos.json");
       writeFileSync(todosPath, JSON.stringify({
         todos: payload.tool_input.todos,
         updatedAt: new Date().toISOString()
