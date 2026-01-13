@@ -914,6 +914,7 @@ export class RawSidebar {
 
     // Header padding
     lines.push(bgLine);
+    lines.push(bgLine);
 
     const { statusline } = this.state;
 
@@ -1031,7 +1032,7 @@ export class RawSidebar {
 
     // Fill remaining space
     const contentHeight = lines.length;
-    const footerHeight = statusline ? 5 : 4;
+    const footerHeight = statusline ? 6 : 4;
     const remainingHeight = this.height - contentHeight - footerHeight;
     for (let i = 0; i < remainingHeight; i++) {
       lines.push(bgLine);
@@ -1070,6 +1071,7 @@ export class RawSidebar {
       const durationDisplay = `${statusline.durationMin}m`;
       const statusInfo = `${ctxDisplay}  ${costDisplay}  ${durationDisplay}`;
       lines.push(`${bg}  ${statusInfo}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(bgLine);
     }
 
     // Repo and branch at bottom
