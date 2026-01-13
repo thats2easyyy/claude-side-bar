@@ -1009,7 +1009,7 @@ export class RawSidebar {
         lines.push(`${bg}  ${prefix}${text}${line}${padding}${ansi.reset}`);
       });
     } else if (inboxTasks.length === 0) {
-      lines.push(`${bg}  ${muted}    press 'a' to add task${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(`${bg}  ${ansi.gray}  [ ] press a to add${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
     lines.push(bgLine);
 
