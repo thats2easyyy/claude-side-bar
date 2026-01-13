@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Atomic Plans
+
+Plan folder: /Users/tyler/Desktop/notes/Projects/Claude Code Sidebar
+
 ## Project Overview
 
 cc-sidebar is a visual sidebar panel for managing a task queue alongside Claude Code. Supports two backends:

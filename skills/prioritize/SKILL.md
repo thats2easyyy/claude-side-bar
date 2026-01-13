@@ -51,6 +51,8 @@ As a staff engineer, evaluate each task considering:
 - **Impact**: High-value features over nice-to-haves.
 - **Effort**: Quick wins can build momentum; large tasks may need breakdown.
 - **Context**: If user provided context, weight it heavily.
+- **Specs**: Read the `spec` field of clarified tasks for detailed requirements.
+- **Section**: Clarified tasks (with specs) are generally ready to execute.
 
 Assign each task:
 - `priority`: Numeric (1 = most important, higher = less important)
@@ -124,9 +126,18 @@ Other tasks:
 Tasks have been re-prioritized in your sidebar.
 ```
 
+## Skill Flow
+
+This skill is part of a chain:
+
+1. **Clarify** → Creates specs for each task (the "what")
+2. **Prioritize** → Staff engineer decides what's next (this skill)
+3. **Atomic Plans** → Track execution progress when working
+
 ## Notes
 
 - This skill reads and modifies the sidebar's tasks.json directly
-- It preserves all existing task fields (id, content, clarified, planPath, etc.)
+- It preserves all existing task fields (id, content, clarified, spec, etc.)
 - Only updates `priority` and `recommended` fields
 - Can be run anytime - safe to run multiple times
+- Read specs to understand task complexity when prioritizing

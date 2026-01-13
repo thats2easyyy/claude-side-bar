@@ -13,6 +13,7 @@ import {
   updateTask,
   removeTask,
   markTaskClarified,
+  setTaskSection,
   getActiveTask,
   setActiveTask,
   activateTask,
@@ -21,6 +22,7 @@ import {
   removeFromDone,
   returnToActive,
   type Task,
+  type TaskSection,
   type ActiveTask,
   type DoneTask,
   type StatuslineData,
@@ -110,15 +112,16 @@ function wrapText(text: string, maxWidth: number): string[] {
   return lines.length > 0 ? lines : [''];
 }
 
+type SidebarSection = "inbox" | "clarified" | "in_progress" | "review";
+
 interface State {
   tasks: Task[];
   activeTask: ActiveTask | null;
   doneTasks: DoneTask[];
   claudeTodos: ClaudeTodo[];
   statusline: StatuslineData | null;
-  selectedSection: "queue" | "done";
+  selectedSection: SidebarSection;
   selectedIndex: number;
-  doneSelectedIndex: number;
   inputMode: InputMode;
   editingTaskId: string | null;
   inputBuffer: string;
@@ -132,9 +135,8 @@ export class RawSidebar {
     doneTasks: [],
     claudeTodos: [],
     statusline: null,
-    selectedSection: "queue",
+    selectedSection: "inbox",
     selectedIndex: 0,
-    doneSelectedIndex: 0,
     inputMode: "none",
     editingTaskId: null,
     inputBuffer: "",
@@ -167,6 +169,44 @@ export class RawSidebar {
       // Neither has priority: sort by createdAt (oldest first)
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     });
+  }
+
+  // Get tasks for a specific section
+  private getTasksForSection(section: "inbox" | "clarified"): Task[] {
+    return this.getSortedTasks().filter(t => {
+      const taskSection = t.section || (t.clarified ? "clarified" : "inbox");
+      return taskSection === section;
+    });
+  }
+
+  // Get items for the currently selected section
+  private getCurrentSectionItems(): { type: "task" | "todo" | "done"; item: Task | ClaudeTodo | DoneTask }[] {
+    const { selectedSection, claudeTodos, doneTasks } = this.state;
+
+    if (selectedSection === "inbox") {
+      return this.getTasksForSection("inbox").map(t => ({ type: "task" as const, item: t }));
+    }
+    if (selectedSection === "clarified") {
+      return this.getTasksForSection("clarified").map(t => ({ type: "task" as const, item: t }));
+    }
+    if (selectedSection === "in_progress") {
+      return claudeTodos.map(t => ({ type: "todo" as const, item: t }));
+    }
+    if (selectedSection === "review") {
+      return doneTasks.map(t => ({ type: "done" as const, item: t }));
+    }
+    return [];
+  }
+
+  // Get the ordered list of non-empty sections for navigation
+  private getNavigableSections(): SidebarSection[] {
+    const sections: SidebarSection[] = [];
+    if (this.getTasksForSection("inbox").length > 0) sections.push("inbox");
+    if (this.getTasksForSection("clarified").length > 0) sections.push("clarified");
+    // in_progress always navigable (shows active task or Claude todos)
+    sections.push("in_progress");
+    if (this.state.doneTasks.length > 0) sections.push("review");
+    return sections;
   }
 
   constructor(onClose?: () => void) {
@@ -594,124 +634,86 @@ export class RawSidebar {
       process.exit(0);
     }
 
-    // Up arrow or k (navigates queue and done sections)
+    // Up arrow or k - navigate within section or to previous section
     if (str === '\x1b[A' || str === '\x1bOA' || str === 'k') {
-      const { selectedSection, selectedIndex, doneSelectedIndex, tasks, doneTasks } = this.state;
+      const items = this.getCurrentSectionItems();
+      const { selectedIndex } = this.state;
 
-      if (selectedSection === "queue") {
-        if (tasks.length === 0) {
-          // No queue items, try to go to done
-          if (doneTasks.length > 0) {
-            this.state.selectedSection = "done";
-            this.state.doneSelectedIndex = doneTasks.length - 1;
-          }
-        } else if (selectedIndex > 0) {
-          this.state.selectedIndex--;
-        } else {
-          // At top of queue, wrap to bottom of done (or bottom of queue)
-          if (doneTasks.length > 0) {
-            this.state.selectedSection = "done";
-            this.state.doneSelectedIndex = Math.min(doneTasks.length - 1, 4); // Max 5 shown
-          } else {
-            this.state.selectedIndex = tasks.length - 1;
-          }
-        }
+      if (selectedIndex > 0) {
+        this.state.selectedIndex--;
       } else {
-        // In done section
-        if (doneSelectedIndex > 0) {
-          this.state.doneSelectedIndex--;
-        } else {
-          // At top of done, wrap to bottom of queue (or bottom of done)
-          if (tasks.length > 0) {
-            this.state.selectedSection = "queue";
-            this.state.selectedIndex = tasks.length - 1;
-          } else {
-            this.state.doneSelectedIndex = Math.min(doneTasks.length - 1, 4);
-          }
+        // Move to previous section
+        const sections = this.getNavigableSections();
+        const currentIdx = sections.indexOf(this.state.selectedSection);
+        if (currentIdx > 0) {
+          const prevSection = sections[currentIdx - 1];
+          this.state.selectedSection = prevSection!;
+          // Select last item in previous section
+          const prevItems = this.getCurrentSectionItems();
+          this.state.selectedIndex = Math.max(0, prevItems.length - 1);
         }
       }
       this.render();
       return;
     }
 
-    // Down arrow or j (navigates queue and done sections)
+    // Down arrow or j - navigate within section or to next section
     if (str === '\x1b[B' || str === '\x1bOB' || str === 'j') {
-      const { selectedSection, selectedIndex, doneSelectedIndex, tasks, doneTasks } = this.state;
+      const items = this.getCurrentSectionItems();
+      const { selectedIndex } = this.state;
 
-      if (selectedSection === "queue") {
-        if (tasks.length === 0) {
-          // No queue items, try to go to done
-          if (doneTasks.length > 0) {
-            this.state.selectedSection = "done";
-            this.state.doneSelectedIndex = 0;
-          }
-        } else if (selectedIndex < tasks.length - 1) {
-          this.state.selectedIndex++;
-        } else {
-          // At bottom of queue, wrap to top of done (or top of queue)
-          if (doneTasks.length > 0) {
-            this.state.selectedSection = "done";
-            this.state.doneSelectedIndex = 0;
-          } else {
-            this.state.selectedIndex = 0;
-          }
-        }
+      if (selectedIndex < items.length - 1) {
+        this.state.selectedIndex++;
       } else {
-        // In done section
-        const maxDoneIndex = Math.min(doneTasks.length - 1, 4); // Max 5 shown
-        if (doneSelectedIndex < maxDoneIndex) {
-          this.state.doneSelectedIndex++;
-        } else {
-          // At bottom of done, wrap to top of queue (or top of done)
-          if (tasks.length > 0) {
-            this.state.selectedSection = "queue";
-            this.state.selectedIndex = 0;
-          } else {
-            this.state.doneSelectedIndex = 0;
-          }
+        // Move to next section
+        const sections = this.getNavigableSections();
+        const currentIdx = sections.indexOf(this.state.selectedSection);
+        if (currentIdx < sections.length - 1) {
+          const nextSection = sections[currentIdx + 1];
+          this.state.selectedSection = nextSection!;
+          this.state.selectedIndex = 0;
         }
       }
       this.render();
       return;
     }
 
-    // Number keys 1-9 (select queue item, switches to queue section)
-    if (/^[1-9]$/.test(str)) {
-      const index = parseInt(str, 10) - 1;
-      const sortedTasks = this.getSortedTasks();
-      if (index < sortedTasks.length) {
-        this.state.selectedSection = "queue";
-        this.state.selectedIndex = index;
-        this.render();
-      }
+    // Tab - switch between sections
+    if (str === '\t') {
+      const sections = this.getNavigableSections();
+      const currentIdx = sections.indexOf(this.state.selectedSection);
+      const nextIdx = (currentIdx + 1) % sections.length;
+      this.state.selectedSection = sections[nextIdx]!;
+      this.state.selectedIndex = 0;
+      this.render();
       return;
     }
 
-    // Enter - send task to Claude (only works in queue section)
+    // Enter - send task to Claude (works in inbox and clarified sections)
     if (str === '\r' || str === '\n') {
-      if (this.state.selectedSection !== "queue") return;
-      const sortedTasks = this.getSortedTasks();
-      const task = sortedTasks[this.state.selectedIndex];
+      const { selectedSection, selectedIndex } = this.state;
+      if (selectedSection !== "inbox" && selectedSection !== "clarified") return;
+
+      const tasks = this.getTasksForSection(selectedSection);
+      const task = tasks[selectedIndex];
       if (task) {
         // Send to Claude and move to active
         sendToClaudePane(task.content);
         activateTask(task.id);
         this.loadData();
-        this.state.selectedIndex = Math.max(0, this.state.selectedIndex - 1);
+        this.state.selectedIndex = Math.max(0, selectedIndex - 1);
         this.render();
         focusClaudePane();
       }
       return;
     }
 
-    // Ctrl+Enter or 'c' - clarify mode (only works in queue section)
-    // CSI u format: \x1b[13;5u (iTerm2), 'c' as fallback
+    // 'c' - clarify (only works in inbox section)
     if (str === '\x1b[13;5u' || str === '\x1b\r' || str === '\x1b\n' || str === 'c') {
-      if (this.state.selectedSection !== "queue") return;
-      const sortedTasks = this.getSortedTasks();
-      const task = sortedTasks[this.state.selectedIndex];
+      if (this.state.selectedSection !== "inbox") return;
+      const tasks = this.getTasksForSection("inbox");
+      const task = tasks[this.state.selectedIndex];
       if (task) {
-        // Invoke the clarify skill with task ID
         sendToClaudePane(`/clarify --task-id ${task.id} ${task.content}`);
         this.render();
         focusClaudePane();
@@ -719,24 +721,26 @@ export class RawSidebar {
       return;
     }
 
-    // 'a' - add task (always switches to queue section)
+    // 'a' - add task (adds to inbox)
     if (str === 'a') {
       this.pausePolling();
-      this.state.selectedSection = "queue";
+      this.state.selectedSection = "inbox";
       this.state.inputMode = "add";
       this.state.inputBuffer = "";
       this.state.inputCursor = 0;
-      this.prevInputLineCount = 1; // Start with 1 empty line
+      this.prevInputLineCount = 1;
       this.render();
       this.setupInputCursor();
       return;
     }
 
-    // 'e' - edit task (only works in queue section)
+    // 'e' - edit task (only in inbox/clarified sections)
     if (str === 'e') {
-      if (this.state.selectedSection !== "queue") return;
-      const sortedTasks = this.getSortedTasks();
-      const task = sortedTasks[this.state.selectedIndex];
+      const { selectedSection, selectedIndex } = this.state;
+      if (selectedSection !== "inbox" && selectedSection !== "clarified") return;
+
+      const tasks = this.getTasksForSection(selectedSection);
+      const task = tasks[selectedIndex];
       if (task) {
         this.pausePolling();
         this.state.inputMode = "edit";
@@ -751,33 +755,31 @@ export class RawSidebar {
       return;
     }
 
-    // 'd' - delete from queue, or confirm done in Review section
+    // 'd' - delete from inbox/clarified, or confirm done in review
     if (str === 'd') {
-      if (this.state.selectedSection === "queue") {
-        const sortedTasks = this.getSortedTasks();
-        const task = sortedTasks[this.state.selectedIndex];
+      const { selectedSection, selectedIndex } = this.state;
+
+      if (selectedSection === "inbox" || selectedSection === "clarified") {
+        const tasks = this.getTasksForSection(selectedSection);
+        const task = tasks[selectedIndex];
         if (task) {
           removeTask(task.id);
           this.state.tasks = getTasks();
-          this.state.selectedIndex = Math.max(0, this.state.selectedIndex - 1);
+          this.state.selectedIndex = Math.max(0, selectedIndex - 1);
           this.render();
         }
-      } else {
-        // Confirm done - remove from Review section
-        const task = this.state.doneTasks[this.state.doneSelectedIndex];
+      } else if (selectedSection === "review") {
+        const task = this.state.doneTasks[selectedIndex];
         if (task) {
           removeFromDone(task.id);
           this.state.doneTasks = getRecentlyDone();
-          // Adjust selection if needed
           if (this.state.doneTasks.length === 0) {
-            // No more review tasks, go back to queue
-            this.state.selectedSection = "queue";
-            this.state.selectedIndex = Math.max(0, this.state.tasks.length - 1);
+            // Move to another section
+            const sections = this.getNavigableSections();
+            this.state.selectedSection = sections[0] || "inbox";
+            this.state.selectedIndex = 0;
           } else {
-            this.state.doneSelectedIndex = Math.min(
-              this.state.doneSelectedIndex,
-              this.state.doneTasks.length - 1
-            );
+            this.state.selectedIndex = Math.min(selectedIndex, this.state.doneTasks.length - 1);
           }
           this.render();
         }
@@ -785,21 +787,21 @@ export class RawSidebar {
       return;
     }
 
-    // 'r' - return Review item to In Progress (not done yet)
+    // 'r' - return review item to in_progress
     if (str === 'r') {
-      if (this.state.selectedSection === "done") {
-        const task = this.state.doneTasks[this.state.doneSelectedIndex];
+      if (this.state.selectedSection === "review") {
+        const task = this.state.doneTasks[this.state.selectedIndex];
         if (task) {
           returnToActive(task.id);
           this.loadData();
-          // Adjust selection if needed
           if (this.state.doneTasks.length === 0) {
-            this.state.selectedSection = "queue";
-            this.state.selectedIndex = Math.max(0, this.state.tasks.length - 1);
+            const sections = this.getNavigableSections();
+            this.state.selectedSection = sections[0] || "inbox";
+            this.state.selectedIndex = 0;
           } else {
-            this.state.doneSelectedIndex = Math.min(
-              this.state.doneSelectedIndex,
-              Math.max(0, this.state.doneTasks.length - 1)
+            this.state.selectedIndex = Math.min(
+              this.state.selectedIndex,
+              this.state.doneTasks.length - 1
             );
           }
           this.render();
@@ -904,7 +906,7 @@ export class RawSidebar {
     if (!this.running) return;
 
     const lines: string[] = [];
-    const { tasks, selectedIndex, inputMode, editingTaskId, inputBuffer, inputCursor } = this.state;
+    const { inputMode, editingTaskId, inputBuffer, inputCursor } = this.state;
 
     // Use dimmed colors when unfocused
     const bg = this.focused ? ansi.bgGray : ansi.dimBg;
@@ -936,120 +938,156 @@ export class RawSidebar {
     lines.push(`${bg}  ${text}${headerContent}${ansi.clearToEnd}${ansi.reset}`);
     lines.push(bgLine); // Space after header
 
-    // In Progress section - combines sidebar active task + Claude's TodoWrite items
-    const { claudeTodos } = this.state;
-    const { activeTask, doneTasks } = this.state;
-    const activeTodos = claudeTodos.filter(t => t.status !== "completed");
     // Content width: total width - 2 (margin) - 4 (indicator like "[ ] ") - 2 (right padding)
     const maxContentWidth = this.width - 8;
-
-    // Always show In Progress section
-    lines.push(`${bg}  ${bold}${text}In Progress${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-
-    // Show sidebar active task first (sent from queue)
-    if (activeTask) {
-      const content = activeTask.content.slice(0, maxContentWidth);
-      lines.push(`${bg}  ${ansi.green}▸   ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-    }
-
-    // Show Claude's TodoWrite items (what Claude is tracking)
-    activeTodos.forEach((todo) => {
-      let statusIcon: string;
-      let todoColor = text;
-      if (todo.status === "in_progress") {
-        statusIcon = "●   ";
-        todoColor = ansi.green;
-      } else {
-        statusIcon = "○   ";
-      }
-      const content = todo.content.slice(0, maxContentWidth);
-      lines.push(`${bg}  ${todoColor}${statusIcon}${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-    });
-
-    lines.push(bgLine);
-
-    // Review section (tasks Claude thinks are done, awaiting user confirmation)
-    const { selectedSection, doneSelectedIndex } = this.state;
-    if (doneTasks.length > 0) {
-      lines.push(`${bg}  ${bold}${text}Review (${doneTasks.length})${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-      doneTasks.slice(0, 5).forEach((task, index) => {
-        const isSelected = selectedSection === "done" && index === doneSelectedIndex && this.focused;
-        const content = task.content.slice(0, maxContentWidth);
-        const icon = isSelected ? "[?] " : " ?  ";
-        const color = isSelected ? text : muted;
-        lines.push(`${bg}  ${color}${icon}${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-      });
-      lines.push(bgLine);
-    }
-
-    // To-dos section - single flat list sorted by priority
-    const sortedTasks = this.getSortedTasks();
+    const { claudeTodos, activeTask, doneTasks, selectedSection, selectedIndex } = this.state;
 
     // Track where the input line is for cursor positioning
     let inputLineRow = 0;
 
-    // Helper to render a task
-    // Design: ★ for recommended, [>] for selected, [ ] for unselected
-    // Clarified tasks show planPath on second line when selected
-    const renderTask = (task: Task, index: number) => {
-      const isSelected = selectedSection === "queue" && index === selectedIndex;
+    // ANSI strikethrough
+    const strikethrough = '\x1b[9m';
+    const noStrike = '\x1b[29m';
+
+    // Helper to render a task in inbox/clarified sections
+    const renderTask = (task: Task, index: number, section: "inbox" | "clarified") => {
+      const isSelected = selectedSection === section && index === selectedIndex;
       const isEditing = inputMode === "edit" && editingTaskId === task.id;
       const star = task.recommended ? "★ " : "  ";
       const bracket = (isSelected && this.focused) ? "[>] " : "[ ] ";
-      const color = task.clarified ? text : muted;
+      const color = section === "clarified" ? text : muted;
 
       if (isEditing) {
         inputLineRow = lines.length + 1;
         this.inputRow = inputLineRow;
-        const wrappedLines = wrapText(inputBuffer, maxContentWidth - 2); // Account for star
+        const wrappedLines = wrapText(inputBuffer, maxContentWidth - 2);
         if (wrappedLines.length === 0) wrappedLines.push('');
         wrappedLines.forEach((line, i) => {
-          const prefix = i === 0 ? `${star}${bracket}` : "      "; // 6 spaces to align with text
+          const prefix = i === 0 ? `${star}${bracket}` : "      ";
           const padding = ' '.repeat(Math.max(0, maxContentWidth - 2 - line.length));
           lines.push(`${bg}  ${prefix}${text}${line}${padding}${ansi.reset}`);
         });
       } else if (isSelected && this.focused && (task.content.length > maxContentWidth - 2 || task.content.includes('\n'))) {
-        // Wrap long content or content with newlines when selected
         const wrappedLines = wrapText(task.content, maxContentWidth - 2);
         wrappedLines.forEach((line, i) => {
           const prefix = i === 0 ? `${star}${bracket}` : "      ";
           lines.push(`${bg}  ${color}${prefix}${line}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
         });
       } else {
-        // For non-selected or short content without newlines, show first line only
         const firstLine = task.content.split('\n')[0] || task.content;
         const content = firstLine.slice(0, maxContentWidth - 2);
         lines.push(`${bg}  ${color}${star}${bracket}${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       }
 
-      // Show plan path on second line when selected and has planPath
-      if (isSelected && this.focused && task.planPath && !isEditing) {
-        const planDisplay = `→ ${task.planPath}`.slice(0, maxContentWidth - 2);
-        lines.push(`${bg}  ${muted}      ${planDisplay}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      // Show spec preview or plan path when selected
+      if (isSelected && this.focused && (task.spec || task.planPath) && !isEditing) {
+        const detail = task.spec
+          ? task.spec.split('\n')[0]?.slice(0, maxContentWidth - 4) || ''
+          : `→ ${task.planPath}`;
+        lines.push(`${bg}  ${muted}      ${detail.slice(0, maxContentWidth - 2)}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       }
     };
 
-    // Render To-dos header and tasks
-    const todoCount = sortedTasks.length > 0 ? ` (${sortedTasks.length})` : '';
-    lines.push(`${bg}  ${bold}${text}To-dos${todoCount}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-    sortedTasks.forEach((task, index) => {
-      renderTask(task, index);
-    });
+    // === INBOX SECTION ===
+    const inboxTasks = this.getTasksForSection("inbox");
+    if (inboxTasks.length > 0 || inputMode === "add") {
+      const count = inboxTasks.length > 0 ? ` (${inboxTasks.length})` : '';
+      lines.push(`${bg}  ${bold}${text}Inbox${count}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      inboxTasks.forEach((task, index) => renderTask(task, index, "inbox"));
 
-    // Add new task input
-    if (inputMode === "add") {
-      inputLineRow = lines.length + 1; // 1-indexed row number
-      this.inputRow = inputLineRow; // Store for cursor positioning
-      const wrappedLines = wrapText(inputBuffer, maxContentWidth - 2); // Account for star area
-      if (wrappedLines.length === 0) wrappedLines.push('');
-      wrappedLines.forEach((line, i) => {
-        const prefix = i === 0 ? '  [ ] ' : '      '; // 2 space star area + 4 char bracket
-        const padding = ' '.repeat(Math.max(0, maxContentWidth - 2 - line.length));
-        lines.push(`${bg}  ${prefix}${text}${line}${padding}${ansi.reset}`);
+      // Add new task input (in inbox section)
+      if (inputMode === "add") {
+        inputLineRow = lines.length + 1;
+        this.inputRow = inputLineRow;
+        const wrappedLines = wrapText(inputBuffer, maxContentWidth - 2);
+        if (wrappedLines.length === 0) wrappedLines.push('');
+        wrappedLines.forEach((line, i) => {
+          const prefix = i === 0 ? '  [ ] ' : '      ';
+          const padding = ' '.repeat(Math.max(0, maxContentWidth - 2 - line.length));
+          lines.push(`${bg}  ${prefix}${text}${line}${padding}${ansi.reset}`);
+        });
+      } else if (this.focused && selectedSection === "inbox") {
+        lines.push(`${bg}  ${ansi.gray}  [ ] press a to add${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      }
+      lines.push(bgLine);
+    }
+
+    // === CLARIFIED SECTION ===
+    const clarifiedTasks = this.getTasksForSection("clarified");
+    if (clarifiedTasks.length > 0) {
+      lines.push(`${bg}  ${bold}${text}Clarified (${clarifiedTasks.length})${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      clarifiedTasks.forEach((task, index) => renderTask(task, index, "clarified"));
+      lines.push(bgLine);
+    }
+
+    // === IN PROGRESS SECTION ===
+    // Show active task with Claude's TodoWrite items indented as subtasks
+    lines.push(`${bg}  ${bold}${text}In Progress${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+
+    if (activeTask) {
+      const content = activeTask.content.slice(0, maxContentWidth);
+      lines.push(`${bg}  ${ansi.green}▸   ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+
+      // Show Claude's TodoWrite items indented as subtasks
+      claudeTodos.forEach((todo) => {
+        let statusIcon: string;
+        let todoColor = text;
+        let strike = '';
+        let strikeEnd = '';
+
+        if (todo.status === "completed") {
+          statusIcon = "✓   ";
+          todoColor = muted;
+          strike = strikethrough;
+          strikeEnd = noStrike;
+        } else if (todo.status === "in_progress") {
+          statusIcon = "●   ";
+          todoColor = ansi.green;
+        } else {
+          statusIcon = "○   ";
+        }
+        const todoContent = todo.content.slice(0, maxContentWidth - 4); // Extra indent
+        lines.push(`${bg}      ${todoColor}${strike}${statusIcon}${todoContent}${strikeEnd}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       });
-    } else if (this.focused) {
-      // Show hint to add task (only when focused)
-      lines.push(`${bg}  ${ansi.gray}  [ ] press a to add${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+    } else if (claudeTodos.length > 0) {
+      // No active task but Claude has todos
+      claudeTodos.forEach((todo) => {
+        let statusIcon: string;
+        let todoColor = text;
+        let strike = '';
+        let strikeEnd = '';
+
+        if (todo.status === "completed") {
+          statusIcon = "✓   ";
+          todoColor = muted;
+          strike = strikethrough;
+          strikeEnd = noStrike;
+        } else if (todo.status === "in_progress") {
+          statusIcon = "●   ";
+          todoColor = ansi.green;
+        } else {
+          statusIcon = "○   ";
+        }
+        const todoContent = todo.content.slice(0, maxContentWidth);
+        lines.push(`${bg}  ${todoColor}${strike}${statusIcon}${todoContent}${strikeEnd}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      });
+    } else {
+      lines.push(`${bg}  ${muted}    (nothing active)${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+    }
+    lines.push(bgLine);
+
+    // === REVIEW SECTION ===
+    if (doneTasks.length > 0) {
+      lines.push(`${bg}  ${bold}${text}Review (${doneTasks.length})${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      doneTasks.slice(0, 5).forEach((task, index) => {
+        const isSelected = selectedSection === "review" && index === selectedIndex && this.focused;
+        const content = task.content.slice(0, maxContentWidth);
+        const icon = isSelected ? "[✓] " : " ✓  ";
+        const color = isSelected ? text : muted;
+        // Strikethrough for completed items
+        lines.push(`${bg}  ${color}${strikethrough}${icon}${content}${noStrike}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      });
+      lines.push(bgLine);
     }
 
     // Fill remaining space
@@ -1064,10 +1102,14 @@ export class RawSidebar {
     let helpText: string;
     if (inputMode !== "none") {
       helpText = "↵: submit | ⇧↵: newline | Esc: cancel";
-    } else if (selectedSection === "done") {
-      helpText = "d: done | r: return to progress | ↑↓: navigate";
+    } else if (selectedSection === "review") {
+      helpText = "d: confirm done | r: return | ↑↓: nav | Tab: section";
+    } else if (selectedSection === "inbox") {
+      helpText = "a: add | c: clarify | ↵: send | d: del | Tab: section";
+    } else if (selectedSection === "clarified") {
+      helpText = "↵: send | e: edit | d: del | Tab: section";
     } else {
-      helpText = "a: add | e: edit | d: del | ↵: send | c: clarify";
+      helpText = "↑↓: navigate | Tab: switch section";
     }
     lines.push(`${bg}  ${muted}${helpText}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     lines.push(bgLine);

@@ -90,11 +90,37 @@ Data is stored in `~/.claude-sidebar/`:
 
 ## Claude Code Setup
 
-Two optional integrations to make Claude aware of the sidebar:
+Three optional integrations to make Claude aware of the sidebar:
 
-### 1. Auto-completion (Recommended)
+### 1. TodoWrite Sync Hook (Recommended)
 
-Add this to your `~/.claude/CLAUDE.md` so Claude automatically marks sidebar tasks as done:
+This hook syncs Claude's TodoWrite output to the sidebar, so you can see Claude's progress in real-time.
+
+Add to your `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "TodoWrite",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun ~/.bun/install/global/node_modules/cc-sidebar/src/sync-todos.ts"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+If you already have other hooks, merge the `PostToolUse` array with your existing hooks.
+
+### 2. Auto-completion (Optional)
+
+Add this to your `~/.claude/CLAUDE.md` so Claude automatically marks sidebar tasks as done when it finishes work:
 
 ```markdown
 ## Sidebar Integration
@@ -122,7 +148,7 @@ Keep it simple - if no clear match, don't move anything. User can manually mark 
 ```
 ```
 
-### 2. Install Skills (Recommended)
+### 3. Install Skills
 
 cc-sidebar includes skills that integrate with Claude Code:
 

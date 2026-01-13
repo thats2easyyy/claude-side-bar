@@ -48,14 +48,18 @@ function updateProjectMapping(): void {
   writeFileSync(mappingPath, JSON.stringify(mapping, null, 2));
 }
 
+export type TaskSection = "inbox" | "clarified" | "in_progress" | "review";
+
 export interface Task {
   id: string;
   content: string;
   createdAt: string;
+  section?: TaskSection;    // Which section the task belongs to (default: inbox)
   clarified?: boolean;      // Was this task clarified via /clarify skill?
   priority?: number;        // Sort order (lower = higher priority, 1 = most important)
   recommended?: boolean;    // Claude's top picks (shown with star)
   planPath?: string;        // Filename of associated Atomic Plan
+  spec?: string;            // Spec content for the task (from /clarify)
 }
 
 export interface ActiveTask {
@@ -162,10 +166,12 @@ export function setTasks(tasks: Task[]): void {
 export function addTask(
   content: string,
   options?: {
+    section?: TaskSection;
     clarified?: boolean;
     priority?: number;
     recommended?: boolean;
     planPath?: string;
+    spec?: string;
   }
 ): Task {
   const tasks = getTasks();
@@ -173,10 +179,12 @@ export function addTask(
     id: crypto.randomUUID(),
     content,
     createdAt: new Date().toISOString(),
+    section: options?.section || "inbox",
     clarified: options?.clarified,
     priority: options?.priority,
     recommended: options?.recommended,
     planPath: options?.planPath,
+    spec: options?.spec,
   };
   tasks.push(task);
   setTasks(tasks);
@@ -192,11 +200,22 @@ export function updateTask(id: string, content: string): void {
   }
 }
 
-export function markTaskClarified(id: string): void {
+export function markTaskClarified(id: string, spec?: string): void {
   const tasks = getTasks();
   const task = tasks.find((t) => t.id === id);
   if (task) {
     task.clarified = true;
+    task.section = "clarified";
+    if (spec) task.spec = spec;
+    setTasks(tasks);
+  }
+}
+
+export function setTaskSection(id: string, section: TaskSection): void {
+  const tasks = getTasks();
+  const task = tasks.find((t) => t.id === id);
+  if (task) {
+    task.section = section;
     setTasks(tasks);
   }
 }
