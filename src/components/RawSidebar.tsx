@@ -1021,71 +1021,27 @@ export class RawSidebar {
     }
 
     // === IN PROGRESS SECTION ===
-    // Show active task with Claude's TodoWrite items indented as subtasks
+    // Show the active task (sent from sidebar)
     lines.push(`${bg}  ${bold}${text}In Progress${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
 
     if (activeTask) {
       const content = activeTask.content.slice(0, maxContentWidth);
       lines.push(`${bg}  ${ansi.green}▸   ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-
-      // Show Claude's TodoWrite items indented as subtasks
-      claudeTodos.forEach((todo) => {
-        let statusIcon: string;
-        let todoColor = text;
-        let strike = '';
-        let strikeEnd = '';
-
-        if (todo.status === "completed") {
-          statusIcon = "✓   ";
-          todoColor = muted;
-          strike = strikethrough;
-          strikeEnd = noStrike;
-        } else if (todo.status === "in_progress") {
-          statusIcon = "●   ";
-          todoColor = ansi.green;
-        } else {
-          statusIcon = "○   ";
-        }
-        const todoContent = todo.content.slice(0, maxContentWidth - 4); // Extra indent
-        lines.push(`${bg}      ${todoColor}${strike}${statusIcon}${todoContent}${strikeEnd}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-      });
-    } else if (claudeTodos.length > 0) {
-      // No active task but Claude has todos
-      claudeTodos.forEach((todo) => {
-        let statusIcon: string;
-        let todoColor = text;
-        let strike = '';
-        let strikeEnd = '';
-
-        if (todo.status === "completed") {
-          statusIcon = "✓   ";
-          todoColor = muted;
-          strike = strikethrough;
-          strikeEnd = noStrike;
-        } else if (todo.status === "in_progress") {
-          statusIcon = "●   ";
-          todoColor = ansi.green;
-        } else {
-          statusIcon = "○   ";
-        }
-        const todoContent = todo.content.slice(0, maxContentWidth);
-        lines.push(`${bg}  ${todoColor}${strike}${statusIcon}${todoContent}${strikeEnd}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-      });
     } else {
       lines.push(`${bg}  ${muted}    (nothing active)${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
     lines.push(bgLine);
 
     // === REVIEW SECTION ===
+    // Tasks here are awaiting user confirmation (same task that moved through the flow)
     if (doneTasks.length > 0) {
       lines.push(`${bg}  ${bold}${text}Review (${doneTasks.length})${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       doneTasks.slice(0, 5).forEach((task, index) => {
         const isSelected = selectedSection === "review" && index === selectedIndex && this.focused;
         const content = task.content.slice(0, maxContentWidth);
-        const icon = isSelected ? "[✓] " : " ✓  ";
+        const icon = isSelected ? "[?] " : " ?  ";
         const color = isSelected ? text : muted;
-        // Strikethrough for completed items
-        lines.push(`${bg}  ${color}${strikethrough}${icon}${content}${noStrike}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+        lines.push(`${bg}  ${color}${icon}${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       });
       lines.push(bgLine);
     }
