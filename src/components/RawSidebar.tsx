@@ -971,7 +971,8 @@ export class RawSidebar {
     // === INBOX SECTION ===
     const inboxTasks = this.getTasksForSection("inbox");
     const inboxCount = inboxTasks.length > 0 ? ` (${inboxTasks.length})` : '';
-    lines.push(`${bg}  ${bold}${text}Inbox${inboxCount}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+    const inboxIndicator = selectedSection === "inbox" ? "> " : "  ";
+    lines.push(`${bg}${inboxIndicator}${bold}${text}Inbox${inboxCount}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
 
     if (inboxTasks.length > 0) {
       inboxTasks.forEach((task, index) => renderTask(task, index, "inbox"));
@@ -996,7 +997,8 @@ export class RawSidebar {
     // === CLARIFIED SECTION ===
     const clarifiedTasks = this.getTasksForSection("clarified");
     const clarifiedCount = clarifiedTasks.length > 0 ? ` (${clarifiedTasks.length})` : '';
-    lines.push(`${bg}  ${bold}${text}Clarified${clarifiedCount}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+    const clarifiedIndicator = selectedSection === "clarified" ? "> " : "  ";
+    lines.push(`${bg}${clarifiedIndicator}${bold}${text}Clarified${clarifiedCount}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     if (clarifiedTasks.length > 0) {
       clarifiedTasks.forEach((task, index) => renderTask(task, index, "clarified"));
     } else {
@@ -1016,7 +1018,8 @@ export class RawSidebar {
 
     // === REVIEW SECTION ===
     const reviewCount = doneTasks.length > 0 ? ` (${doneTasks.length})` : '';
-    lines.push(`${bg}  ${bold}${text}Review${reviewCount}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+    const reviewIndicator = selectedSection === "review" ? "> " : "  ";
+    lines.push(`${bg}${reviewIndicator}${bold}${text}Review${reviewCount}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     if (doneTasks.length > 0) {
       doneTasks.forEach((task, index) => {
         const isSelected = selectedSection === "review" && index === selectedIndex && this.focused;
