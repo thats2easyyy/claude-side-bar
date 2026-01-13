@@ -915,23 +915,7 @@ export class RawSidebar {
     // Header padding
     lines.push(bgLine);
 
-    // Repo and branch at top (always computed locally per-instance)
     const { statusline } = this.state;
-    let branch = '';
-    let repo = '';
-    try {
-      branch = execSync('git rev-parse --abbrev-ref HEAD 2>/dev/null', { encoding: 'utf8' }).trim();
-    } catch {}
-    const cwd = getEffectiveCwd();
-    const parts = cwd.split('/').filter(Boolean);
-    repo = parts[parts.length - 1] || cwd;
-    const branchDisplay = branch ? `${branch}` : '';
-    const repoDisplay = repo ? `${repo}` : '';
-    const headerContent = branchDisplay && repoDisplay
-      ? `${repoDisplay} · ${branchDisplay}`
-      : repoDisplay || branchDisplay;
-    lines.push(`${bg}  ${text}${headerContent}${ansi.clearToEnd}${ansi.reset}`);
-    lines.push(bgLine); // Space after header
 
     // Content width: total width - 2 (margin) - 4 (indicator like "[ ] ") - 2 (right padding)
     const maxContentWidth = this.width - 8;
@@ -1004,7 +988,7 @@ export class RawSidebar {
         lines.push(`${bg}  ${prefix}${text}${line}${padding}${ansi.reset}`);
       });
     } else if (inboxTasks.length === 0) {
-      lines.push(`${bg}  ${ansi.gray}  [ ] press a to add${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(`${bg}  ${ansi.gray}  [ ] a to add tasks${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
     lines.push(bgLine);
 
@@ -1015,7 +999,7 @@ export class RawSidebar {
     if (clarifiedTasks.length > 0) {
       clarifiedTasks.forEach((task, index) => renderTask(task, index, "clarified"));
     } else {
-      lines.push(`${bg}  ${ansi.gray}  [ ] use 'c' to clarify inbox tasks${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(`${bg}  ${ansi.gray}  [ ] c to clarify tasks${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
     lines.push(bgLine);
 
@@ -1025,7 +1009,7 @@ export class RawSidebar {
       const content = activeTask.content.slice(0, maxContentWidth);
       lines.push(`${bg}  ${ansi.green}▸   ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     } else {
-      lines.push(`${bg}  ${ansi.gray}  [ ] press enter to send task${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(`${bg}  ${ansi.gray}  [ ] ↵ to send tasks${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
     lines.push(bgLine);
 
@@ -1041,13 +1025,13 @@ export class RawSidebar {
         lines.push(`${bg}  ${color}${icon}${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       });
     } else {
-      lines.push(`${bg}  ${ansi.gray}  [ ] completed tasks appear here${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(`${bg}  ${ansi.gray}  [ ] d to mark as done${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
     lines.push(bgLine);
 
     // Fill remaining space
     const contentHeight = lines.length;
-    const footerHeight = statusline ? 4 : 3;
+    const footerHeight = statusline ? 5 : 4;
     const remainingHeight = this.height - contentHeight - footerHeight;
     for (let i = 0; i < remainingHeight; i++) {
       lines.push(bgLine);
@@ -1087,6 +1071,23 @@ export class RawSidebar {
       const statusInfo = `${ctxDisplay}  ${costDisplay}  ${durationDisplay}`;
       lines.push(`${bg}  ${statusInfo}${ansi.clearToEnd}${ansi.reset}`);
     }
+
+    // Repo and branch at bottom
+    let branch = '';
+    let repo = '';
+    try {
+      branch = execSync('git rev-parse --abbrev-ref HEAD 2>/dev/null', { encoding: 'utf8' }).trim();
+    } catch {}
+    const cwd = getEffectiveCwd();
+    const parts = cwd.split('/').filter(Boolean);
+    repo = parts[parts.length - 1] || cwd;
+    const branchDisplay = branch ? `${branch}` : '';
+    const repoDisplay = repo ? `${repo}` : '';
+    const repoContent = branchDisplay && repoDisplay
+      ? `${repoDisplay} · ${branchDisplay}`
+      : repoDisplay || branchDisplay;
+    lines.push(`${bg}  ${muted}${repoContent}${ansi.clearToEnd}${ansi.reset}`);
+
     lines.push(bgLine); // Bottom padding
 
     // Output everything at once with synchronized output to prevent partial renders
