@@ -933,8 +933,8 @@ export class RawSidebar {
     const renderTask = (task: Task, index: number, section: "inbox" | "clarified") => {
       const isSelected = selectedSection === section && index === selectedIndex;
       const isEditing = inputMode === "edit" && editingTaskId === task.id;
-      const star = task.recommended ? "★ " : "  ";
       const bracket = (isSelected && this.focused) ? "[>] " : "[ ] ";
+      const star = task.recommended ? "★ " : "";
       const color = section === "clarified" ? text : muted;
 
       if (isEditing) {
@@ -943,20 +943,20 @@ export class RawSidebar {
         const wrappedLines = wrapText(inputBuffer, maxContentWidth - 2);
         if (wrappedLines.length === 0) wrappedLines.push('');
         wrappedLines.forEach((line, i) => {
-          const prefix = i === 0 ? `${star}${bracket}` : "      ";
+          const prefix = i === 0 ? `${bracket}${star}` : "    ";
           const padding = ' '.repeat(Math.max(0, maxContentWidth - 2 - line.length));
           lines.push(`${bg}  ${prefix}${text}${line}${padding}${ansi.reset}`);
         });
       } else if (isSelected && this.focused && (task.content.length > maxContentWidth - 2 || task.content.includes('\n'))) {
         const wrappedLines = wrapText(task.content, maxContentWidth - 2);
         wrappedLines.forEach((line, i) => {
-          const prefix = i === 0 ? `${star}${bracket}` : "      ";
+          const prefix = i === 0 ? `${bracket}${star}` : "    ";
           lines.push(`${bg}  ${color}${prefix}${line}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
         });
       } else {
         const firstLine = task.content.split('\n')[0] || task.content;
         const content = firstLine.slice(0, maxContentWidth - 2);
-        lines.push(`${bg}  ${color}${star}${bracket}${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+        lines.push(`${bg}  ${color}${bracket}${star}${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       }
 
       // Show spec preview or plan path when selected
@@ -984,12 +984,12 @@ export class RawSidebar {
       const wrappedLines = wrapText(inputBuffer, maxContentWidth - 2);
       if (wrappedLines.length === 0) wrappedLines.push('');
       wrappedLines.forEach((line, i) => {
-        const prefix = i === 0 ? '  [ ] ' : '      ';
+        const prefix = i === 0 ? '[ ] ' : '    ';
         const padding = ' '.repeat(Math.max(0, maxContentWidth - 2 - line.length));
         lines.push(`${bg}  ${prefix}${text}${line}${padding}${ansi.reset}`);
       });
     } else if (inboxTasks.length === 0) {
-      lines.push(`${bg}  ${ansi.gray}  [ ] a to add tasks${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(`${bg}  ${ansi.gray}[ ] a to add tasks${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
     lines.push(bgLine);
 
@@ -1000,7 +1000,7 @@ export class RawSidebar {
     if (clarifiedTasks.length > 0) {
       clarifiedTasks.forEach((task, index) => renderTask(task, index, "clarified"));
     } else {
-      lines.push(`${bg}  ${ansi.gray}  [ ] c to clarify tasks${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(`${bg}  ${ansi.gray}[ ] c to clarify tasks${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
     lines.push(bgLine);
 
@@ -1010,7 +1010,7 @@ export class RawSidebar {
       const content = activeTask.content.slice(0, maxContentWidth);
       lines.push(`${bg}  ${ansi.green}▸   ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     } else {
-      lines.push(`${bg}  ${ansi.gray}  [ ] ↵ to send tasks${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(`${bg}  ${ansi.gray}[ ] ↵ to send tasks${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
     lines.push(bgLine);
 
@@ -1026,7 +1026,7 @@ export class RawSidebar {
         lines.push(`${bg}  ${color}${icon}${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       });
     } else {
-      lines.push(`${bg}  ${ansi.gray}  [ ] d to mark as done${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(`${bg}  ${ansi.gray}[ ] d to mark as done${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
     lines.push(bgLine);
 
