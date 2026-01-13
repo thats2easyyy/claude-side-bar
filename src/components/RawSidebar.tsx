@@ -1043,11 +1043,11 @@ export class RawSidebar {
     if (inputMode !== "none") {
       helpText = "↵: submit | ⇧↵: newline | Esc: cancel";
     } else if (selectedSection === "review") {
-      helpText = "d: confirm done | r: return | ↑↓: nav | Tab: section";
+      helpText = "d: confirm done | r: return | ↑↓: nav";
     } else if (selectedSection === "inbox") {
-      helpText = "a: add | c: clarify | ↵: send | d: del | Tab: section";
+      helpText = "a: add | c: clarify | ↵: send | d: del";
     } else if (selectedSection === "clarified") {
-      helpText = "↵: send | e: edit | d: del | Tab: section";
+      helpText = "↵: send | e: edit | d: del";
     } else {
       helpText = "↑↓: navigate | Tab: switch section";
     }
