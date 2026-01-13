@@ -990,27 +990,28 @@ export class RawSidebar {
 
     // === INBOX SECTION ===
     const inboxTasks = this.getTasksForSection("inbox");
-    if (inboxTasks.length > 0 || inputMode === "add") {
-      const count = inboxTasks.length > 0 ? ` (${inboxTasks.length})` : '';
-      lines.push(`${bg}  ${bold}${text}Inbox${count}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-      inboxTasks.forEach((task, index) => renderTask(task, index, "inbox"));
+    const inboxCount = inboxTasks.length > 0 ? ` (${inboxTasks.length})` : '';
+    lines.push(`${bg}  ${bold}${text}Inbox${inboxCount}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
 
-      // Add new task input (in inbox section)
-      if (inputMode === "add") {
-        inputLineRow = lines.length + 1;
-        this.inputRow = inputLineRow;
-        const wrappedLines = wrapText(inputBuffer, maxContentWidth - 2);
-        if (wrappedLines.length === 0) wrappedLines.push('');
-        wrappedLines.forEach((line, i) => {
-          const prefix = i === 0 ? '  [ ] ' : '      ';
-          const padding = ' '.repeat(Math.max(0, maxContentWidth - 2 - line.length));
-          lines.push(`${bg}  ${prefix}${text}${line}${padding}${ansi.reset}`);
-        });
-      } else if (this.focused && selectedSection === "inbox") {
-        lines.push(`${bg}  ${ansi.gray}  [ ] press a to add${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-      }
-      lines.push(bgLine);
+    if (inboxTasks.length > 0) {
+      inboxTasks.forEach((task, index) => renderTask(task, index, "inbox"));
     }
+
+    // Add new task input (in inbox section)
+    if (inputMode === "add") {
+      inputLineRow = lines.length + 1;
+      this.inputRow = inputLineRow;
+      const wrappedLines = wrapText(inputBuffer, maxContentWidth - 2);
+      if (wrappedLines.length === 0) wrappedLines.push('');
+      wrappedLines.forEach((line, i) => {
+        const prefix = i === 0 ? '  [ ] ' : '      ';
+        const padding = ' '.repeat(Math.max(0, maxContentWidth - 2 - line.length));
+        lines.push(`${bg}  ${prefix}${text}${line}${padding}${ansi.reset}`);
+      });
+    } else if (inboxTasks.length === 0) {
+      lines.push(`${bg}  ${muted}    press 'a' to add task${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+    }
+    lines.push(bgLine);
 
     // === CLARIFIED SECTION ===
     const clarifiedTasks = this.getTasksForSection("clarified");
@@ -1022,15 +1023,12 @@ export class RawSidebar {
 
     // === IN PROGRESS SECTION ===
     // Show the active task (sent from sidebar)
-    lines.push(`${bg}  ${bold}${text}In Progress${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-
     if (activeTask) {
+      lines.push(`${bg}  ${bold}${text}In Progress${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       const content = activeTask.content.slice(0, maxContentWidth);
       lines.push(`${bg}  ${ansi.green}▸   ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-    } else {
-      lines.push(`${bg}  ${muted}    (nothing active)${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
+      lines.push(bgLine);
     }
-    lines.push(bgLine);
 
     // === REVIEW SECTION ===
     // Tasks here are awaiting user confirmation (same task that moved through the flow)
