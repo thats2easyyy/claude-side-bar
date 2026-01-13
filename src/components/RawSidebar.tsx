@@ -200,13 +200,8 @@ export class RawSidebar {
 
   // Get the ordered list of non-empty sections for navigation
   private getNavigableSections(): SidebarSection[] {
-    const sections: SidebarSection[] = [];
-    if (this.getTasksForSection("inbox").length > 0) sections.push("inbox");
-    if (this.getTasksForSection("clarified").length > 0) sections.push("clarified");
-    // in_progress always navigable (shows active task or Claude todos)
-    sections.push("in_progress");
-    if (this.state.doneTasks.length > 0) sections.push("review");
-    return sections;
+    // All sections always visible and navigable (except in_progress which is display-only)
+    return ["inbox", "clarified", "review"];
   }
 
   constructor(onClose?: () => void) {
@@ -1015,34 +1010,40 @@ export class RawSidebar {
 
     // === CLARIFIED SECTION ===
     const clarifiedTasks = this.getTasksForSection("clarified");
+    const clarifiedCount = clarifiedTasks.length > 0 ? ` (${clarifiedTasks.length})` : '';
+    lines.push(`${bg}  ${bold}${text}Clarified${clarifiedCount}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     if (clarifiedTasks.length > 0) {
-      lines.push(`${bg}  ${bold}${text}Clarified (${clarifiedTasks.length})${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       clarifiedTasks.forEach((task, index) => renderTask(task, index, "clarified"));
-      lines.push(bgLine);
+    } else {
+      lines.push(`${bg}  ${ansi.gray}  [ ] use 'c' to clarify inbox tasks${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
+    lines.push(bgLine);
 
     // === IN PROGRESS SECTION ===
-    // Show the active task (sent from sidebar)
+    lines.push(`${bg}  ${bold}${text}In Progress${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     if (activeTask) {
-      lines.push(`${bg}  ${bold}${text}In Progress${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       const content = activeTask.content.slice(0, maxContentWidth);
       lines.push(`${bg}  ${ansi.green}▸   ${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-      lines.push(bgLine);
+    } else {
+      lines.push(`${bg}  ${ansi.gray}  [ ] press enter to send task${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
+    lines.push(bgLine);
 
     // === REVIEW SECTION ===
-    // Tasks here are awaiting user confirmation (same task that moved through the flow)
+    const reviewCount = doneTasks.length > 0 ? ` (${doneTasks.length})` : '';
+    lines.push(`${bg}  ${bold}${text}Review${reviewCount}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     if (doneTasks.length > 0) {
-      lines.push(`${bg}  ${bold}${text}Review (${doneTasks.length})${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
-      doneTasks.slice(0, 5).forEach((task, index) => {
+      doneTasks.forEach((task, index) => {
         const isSelected = selectedSection === "review" && index === selectedIndex && this.focused;
         const content = task.content.slice(0, maxContentWidth);
         const icon = isSelected ? "[?] " : " ?  ";
         const color = isSelected ? text : muted;
         lines.push(`${bg}  ${color}${icon}${content}${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
       });
-      lines.push(bgLine);
+    } else {
+      lines.push(`${bg}  ${ansi.gray}  [ ] completed tasks appear here${ansi.reset}${bg}${ansi.clearToEnd}${ansi.reset}`);
     }
+    lines.push(bgLine);
 
     // Fill remaining space
     const contentHeight = lines.length;
